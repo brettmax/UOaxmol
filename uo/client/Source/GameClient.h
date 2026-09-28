@@ -4,6 +4,7 @@
 #include "Settings.h"
 #include "audio/AudioManager.h"
 #include "gumps/GumpSystem.h"
+#include "gumps/UoFontGumpText.h"
 #include "net/YasioTransport.h"
 #include "render/TextureCache.h"
 
@@ -133,6 +134,7 @@ private:
     std::unique_ptr<uo::movement::MovementSystem> _movement;
     std::unique_ptr<uo::world::Targeting> _targeting;
     std::unique_ptr<uo::client::gumps::GumpSystem> _gumps;
+    std::unique_ptr<uo::client::gumps::UoFontGumpText> _gumpText;  // set when UO fonts loaded
     uo::audio::AudioManager _audio;
     int _tilesMap = -1;  // facet _tiles reads, or -1 before one is set
     float _pingTimer = 0;

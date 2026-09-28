@@ -35,6 +35,8 @@ public:
 
     void clear() { _entries.clear(); }
     std::size_t size() const { return _entries.size(); }
+    // Every loaded entry (number to UTF-8 text), for offline export.
+    const std::unordered_map<std::int32_t, std::string>& entries() const { return _entries; }
     const std::string* get(std::int32_t number) const;
 
     // Entry, else "MegaCliloc: missing <n> [~1_val~] [~2_val~]".

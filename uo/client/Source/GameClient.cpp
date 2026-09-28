@@ -55,6 +55,7 @@ void GameClient::resetWorld()
         _gumps = std::make_unique<uo::client::gumps::GumpSystem>(
             _install, *_world, [this](std::vector<std::uint8_t> bytes) { _session.send(std::move(bytes)); });
         _gumps->install(_handlers);
+        _gumps->setText(_gumpText.get());
     }
 
     walkHandler = [this](uo::world::Direction dir, bool run) {
@@ -77,7 +78,14 @@ bool GameClient::loadAssets()
     {
         _textures = std::make_unique<UOTextures>(_install);
         // Missing fonts.mul is not fatal yet: scenes fall back to TTF labels.
-        if (!uo::client::text::TextSystem::instance().init(_install))
+        if (_gumps)
+            _gumps->setText(nullptr);
+        _gumpText.reset();
+        if (uo::client::text::TextSystem::instance().init(_install))
+            _gumpText = std::make_unique<uo::client::gumps::UoFontGumpText>(_install);
+        if (_gumps)
+            _gumps->setText(_gumpText.get());
+        else
             AXLOGW("AxmolUO: fonts.mul not found; UO fonts disabled");
         _audio.shutdown();
         _audio.initialize(_install.sounds());
