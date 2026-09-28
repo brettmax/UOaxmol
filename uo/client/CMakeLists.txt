@@ -81,6 +81,11 @@ target_link_libraries(${APP_NAME} uocore)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/input ${CMAKE_BINARY_DIR}/uo_client_input)
 target_link_libraries(${APP_NAME} uo_client_input)
 
+# Batched world renderer and GPU hue shader (uo/client/world).
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world ${CMAKE_BINARY_DIR}/uo_world)
+target_link_libraries(${APP_NAME} uo_world_axmol)
+uo_world_add_shaders(${APP_NAME})
+
 # Default Platform-specific setup
 include(AXGamePlatformSetup)
 
