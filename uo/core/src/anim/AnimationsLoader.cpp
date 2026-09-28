@@ -4,10 +4,10 @@
 
 #include "uo/assets/Color.h"
 #include "uo/io/BinaryReader.h"
-#include "uo/io/Bwt.h"
+#include "uo/assets/Bwt.h"
+#include "uo/io/Compression.h"
 #include "uo/io/DefReader.h"
 
-#include <zlib.h>
 
 #include <algorithm>
 #include <cctype>
@@ -661,13 +661,11 @@ void AnimationsLoader::loadUop()
 
         if (entry->compression >= CompressionType::Zlib)
         {
-            inflated.resize(static_cast<size_t>(std::max(entry->decompressed, 0)));
-            uLongf destLen = static_cast<uLongf>(inflated.size());
-            if (::uncompress(inflated.data(), &destLen, data.data(), static_cast<uLong>(data.size())) != Z_OK)
+            if (!io::inflate(data, inflated, static_cast<size_t>(std::max(entry->decompressed, 0))))
             {
                 continue;
             }
-            reader = BinaryReader(std::span<const uint8_t>(inflated.data(), destLen));
+            reader = BinaryReader(std::span<const uint8_t>(inflated.data(), inflated.size()));
         }
 
         if (reader.remaining() == 0)
@@ -1203,17 +1201,15 @@ std::optional<std::pair<std::vector<uint8_t>, bool>> AnimationsLoader::readUopBl
 
     if (index.compressionType >= CompressionType::Zlib)
     {
-        std::vector<uint8_t> out(index.uncompressedSize);
-        uLongf destLen = index.uncompressedSize;
-        if (::uncompress(out.data(), &destLen, raw.data(), static_cast<uLong>(raw.size())) != Z_OK)
+        std::vector<uint8_t> out;
+        if (!io::inflate(raw, out, index.uncompressedSize))
         {
             return std::nullopt;
         }
-        out.resize(destLen);
 
         if (index.compressionType == CompressionType::ZlibBwt)
         {
-            out = io::bwtDecompress(out);
+            out = assets::bwtDecompress(out);
             if (out.empty())
             {
                 return std::nullopt;

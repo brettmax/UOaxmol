@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// Tests for uocore_anim: the animation loader (MUL, verdata, UOP, BWT), the frame cache,
+// Tests for uo::anim: the animation loader (MUL, verdata, UOP, BWT), the frame cache,
 // action selection, equipment ordering and the mobile draw list. Every fixture is built
 // here byte by byte, so the suite needs no UO installation.
 #include "TestUtil.h"
@@ -11,11 +11,11 @@
 #include "uo/anim/MobileAnimation.h"
 #include "uo/anim/MobileRenderer.h"
 #include "uo/assets/Verdata.h"
-#include "uo/io/Bwt.h"
+#include "uo/assets/Bwt.h"
+#include "uo/io/Compression.h"
 #include "uo/io/DefReader.h"
 #include "uo/io/UOFile.h"
 
-#include <zlib.h>
 
 #include <algorithm>
 #include <array>
@@ -186,10 +186,8 @@ struct MulAnimFile
 
 Bytes zlibCompress(const Bytes& in)
 {
-    uLongf len = compressBound(static_cast<uLong>(in.size()));
-    Bytes out(len);
-    REQUIRE(compress2(out.data(), &len, in.data(), static_cast<uLong>(in.size()), 9) == Z_OK);
-    out.resize(len);
+    Bytes out = io::deflate(in);
+    REQUIRE(!out.empty());
     return out;
 }
 
@@ -426,13 +424,13 @@ TEST_CASE("bwt stage inverts a move-to-position + move-to-front encoding")
     payload.push_back(42);
 
     const Bytes encoded = bwtEncode(payload);
-    CHECK(io::bwtDecompress(encoded) == payload);
+    CHECK(assets::bwtDecompress(encoded) == payload);
 
     const Bytes single{9, 9, 9, 9};
-    CHECK(io::bwtDecompress(bwtEncode(single)) == single);
+    CHECK(assets::bwtDecompress(bwtEncode(single)) == single);
 
-    CHECK(io::bwtDecompress(Bytes{1, 2, 3}).empty());
-    CHECK(io::bwtDecompress(Bytes(20, 0)).empty());
+    CHECK(assets::bwtDecompress(Bytes{1, 2, 3}).empty());
+    CHECK(assets::bwtDecompress(Bytes(20, 0)).empty());
 }
 
 TEST_CASE("anim.mul frames decode with palette, centre and transparency")
