@@ -143,16 +143,16 @@ uint16_t AssetGumpTextures::artAnimId(uint16_t graphic)
 
 FallbackGumpText::FallbackGumpText(const uo::assets::Installation* assets) : _assets(assets) {}
 
-ax::Color32 unicodeHueColor(const uo::assets::Installation* assets, uint16_t hue)
+ax::Color32 FallbackGumpText::hueColor(uint16_t hue) const
 {
-    if (hue == 0xFFFF || hue == 0 || !assets)
+    if (hue == 0xFFFF || hue == 0 || !_assets)
     {
         return ax::Color32::white;
     }
 
     // White through the hue ramp gives the hue's brightest entry, which is how the classic
     // client colours unicode text.
-    uint32_t c = assets->hues().applyHue(0x7FFF, hue);
+    uint32_t c = _assets->hues().applyHue(0x7FFF, hue);
     return ax::Color32(c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF, 0xFF);
 }
 

@@ -17,7 +17,6 @@ public:
     ax::Node* createHtml(std::string_view html, int width, uint32_t defaultRgba, bool hasBackground) override;
     ax::Size measure(std::string_view utf8, const GumpTextStyle& style) override;
     std::string cliloc(uint32_t number, std::string_view args = {}) override;
-    ax::Color32 textColor(uint16_t hue) const override { return unicodeHueColor(&_assets, hue); }
 
 private:
     const uo::assets::Installation& _assets;

@@ -4,7 +4,6 @@
 #include "uo/assets/Color.h"
 
 #include <algorithm>
-#include <cmath>
 #include <unordered_set>
 
 namespace uo::client::gumps
@@ -53,17 +52,6 @@ void addNodeAt(Control* parent, ax::Node* n, float x, float y)
     n->setAnchorPoint(ax::Vec2(0, 1));
     n->setPosition(ax::Vec2(x, parent->getContentSize().height - y));
     parent->addChild(n);
-}
-
-// Logs a gump art id the client files lack, once per id per run.
-void reportMissingGump(uint16_t id, const char* use)
-{
-    static std::unordered_set<uint16_t> reported;
-
-    if (reported.insert(id).second)
-    {
-        AXLOGW("gumps: gump art {} (0x{:04X}) missing from gumpart; {}", id, id, use);
-    }
 }
 
 // Stand-in for missing art: a neutral box, so the layout and the hit area stay as designed.
@@ -142,6 +130,17 @@ constexpr uint16_t kScrollSlider = 254;
 constexpr uint16_t kScrollFlag = 0x0828;
 
 }  // namespace
+
+// Logs a gump art id the client files lack, once per id per run.
+void reportMissingGump(uint16_t id, const char* use)
+{
+    static std::unordered_set<uint16_t> reported;
+
+    if (reported.insert(id).second)
+    {
+        AXLOGW("gumps: gump art {} (0x{:04X}) missing from gumpart; {}", id, id, use);
+    }
+}
 
 // --- TiledTexture ----------------------------------------------------------------------
 
@@ -770,54 +769,7 @@ void HtmlArea::onMouseDown(MouseButton button, const ax::Vec2& local)
 
 // --- TextEntry -------------------------------------------------------------------------
 
-class TextEntry::Input final : public ax::ui::InputField
-{
-public:
-    static Input* create(float fontSize)
-    {
-        auto* input = new Input();
-
-        if (input->initWithPlaceholder("", "fonts/arial.ttf", fontSize, 1, ax::Color32(0, 0, 0, 0)))
-        {
-            input->autorelease();
-            return input;
-        }
-
-        delete input;
-        return nullptr;
-    }
-
-    int cursor() const { return _cursorCharOffset; }
-    bool focused() const { return _isAttachWithIME; }
-};
-
-namespace
-{
-// Unicode font 1 with a black border, as ClassicUO draws gump text entries.
-constexpr uint8_t kEntryFont = 1;
-constexpr float kCaretBlink = 0.5f;
-
-// The first `chars` UTF-8 code points of `s`.
-std::string_view utf8Prefix(std::string_view s, int chars)
-{
-    size_t i = 0;
-
-    for (int n = 0; n < chars && i < s.size(); ++n)
-    {
-        ++i;
-
-        while (i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80)
-        {
-            ++i;
-        }
-    }
-
-    return s.substr(0, i);
-}
-}  // namespace
-
-TextEntry::TextEntry(GumpContext& ctx, float width, float height, uint16_t hue, std::string_view text, int maxLength)
-    : _ctx(ctx)
+TextEntry::TextEntry(GumpContext&, float width, float height, uint16_t hue, std::string_view text, int maxLength)
 {
     init();
     autorelease();
@@ -825,124 +777,35 @@ TextEntry::TextEntry(GumpContext& ctx, float width, float height, uint16_t hue, 
     setMovesGump(false);
     setUOSize(width, height);
 
-    _style.font = kEntryFont;
-    _style.unicode = true;
-    _style.hue = hue;
-    _style.border = true;
+    // createGumpEntry adds 1 to the wire hue itself.
+    _box = uo::client::text::TextBox::createGumpEntry(width, height, static_cast<uint16_t>(hue - 1), text, maxLength);
 
-    auto* clip = ax::ClippingRectangleNode::create(ax::Rect(0, 0, width, height));
-    clip->setContentSize(ax::Size(width, height));
-    addNodeAt(this, clip, 0, 0);
-    _clip = clip;
-
-    _field = Input::create(std::max(10.0f, height - 6));
-
-    if (_field)
+    if (_box)
     {
-        _field->setString(std::string(text));
-        _field->setMaxLength(maxLength > 0 ? maxLength : 255);
-        _field->setTextColor(ax::Color32(0, 0, 0, 0));
-        _field->setCursorColor(ax::Color32(0, 0, 0, 0));
-        _field->setContentSize(ax::Size(width, height));
-        _field->setIgnoreAnchorPointForPosition(false);
-        _field->setAnchorPoint(ax::Vec2(0, 1));
-        _field->setPosition(ax::Vec2(0, height));
-        _field->setOpacity(0);
-        addChild(_field);
+        _box->setPosition(ax::Vec2::zero);
+        addChild(_box);
     }
-
-    const float caretHeight = std::min(height, std::max(1.0f, _ctx.text->measure("A", _style).height));
-    auto* caret = ax::LayerColor::create(_ctx.text->textColor(hue), 1, caretHeight);
-    caret->setIgnoreAnchorPointForPosition(false);
-    caret->setAnchorPoint(ax::Vec2(0, 1));
-    caret->setVisible(false);
-    _clip->addChild(caret);
-    _caret = caret;
-
-    sync(true);
-    schedule([this](float dt) {
-        _blink += dt;
-        sync();
-    }, "entry");
-}
-
-void TextEntry::sync(bool force)
-{
-    if (!_field)
-    {
-        return;
-    }
-
-    std::string_view current = _field->getString();
-    const int cursor = _field->cursor();
-    const float H = getContentSize().height;
-    const float W = getContentSize().width;
-
-    if (force || current != _shownText)
-    {
-        _shownText = current;
-
-        if (_label)
-        {
-            _label->removeFromParent();
-            _label = nullptr;
-        }
-
-        if (!_shownText.empty())
-        {
-            _label = _ctx.text->createLabel(_shownText, _style);
-
-            if (_label)
-            {
-                _label->setIgnoreAnchorPointForPosition(false);
-                _label->setAnchorPoint(ax::Vec2(0, 1));
-                _clip->addChild(_label);
-            }
-        }
-
-        _shownCursor = -1;
-    }
-
-    if (_shownCursor != cursor)
-    {
-        _shownCursor = cursor;
-        _blink = 0;
-
-        // Keep the caret in view: long text scrolls left, as in a classic text box.
-        const float caretX = _ctx.text->measure(utf8Prefix(_shownText, cursor), _style).width;
-        const float scroll = std::max(0.0f, caretX - (W - 2));
-
-        if (_label)
-        {
-            _label->setPosition(ax::Vec2(-scroll, H));
-        }
-
-        _caret->setPosition(ax::Vec2(caretX - scroll, H));
-    }
-
-    _caret->setVisible(_field->focused() && std::fmod(_blink, 2 * kCaretBlink) < kCaretBlink);
 }
 
 std::string TextEntry::text() const
 {
-    return _field ? std::string(_field->getString()) : std::string{};
+    return _box ? _box->text() : std::string{};
 }
 
 void TextEntry::focus()
 {
-    if (_field)
+    if (_box)
     {
-        // attachWithIME is protected on InputField but public on its InputDelegate base.
-        static_cast<ax::InputDelegate*>(_field)->attachWithIME();
-        _blink = 0;
+        _box->focus();
     }
 }
 
-void TextEntry::onClick(MouseButton button)
+void TextEntry::onMouseDown(MouseButton button, const ax::Vec2& local)
 {
-    if (button == MouseButton::Left)
+    if (button == MouseButton::Left && _box)
     {
-        focus();
+        _box->focus();
+        _box->placeCaretAt(static_cast<int>(local.x), static_cast<int>(local.y));
     }
 }
 

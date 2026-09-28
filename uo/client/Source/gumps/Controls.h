@@ -6,7 +6,7 @@
 
 #include "gumps/Gump.h"
 
-#include "axmol/ui/InputField.h"
+#include "axmol/TextBox.h"
 
 #include <functional>
 
@@ -214,28 +214,16 @@ private:
 class TextEntry : public Control
 {
 public:
+    // `hue` is the parsed text hue (wire hue + 1), as the layout gives it.
     TextEntry(GumpContext& ctx, float width, float height, uint16_t hue, std::string_view text, int maxLength);
 
     std::string text() const;
     void focus();
-    void onClick(MouseButton button) override;
+    void onMouseDown(MouseButton button, const ax::Vec2& local) override;
 
 private:
-    // Redraws the UO-font text and caret when the input's text or cursor moved.
-    void sync(bool force = false);
-
-    GumpContext& _ctx;
-    GumpTextStyle _style;
-    // Takes keyboard and IME input; its own TTF text and cursor are transparent, and the
-    // text is drawn with the UO unicode font instead, as ClassicUO's StbTextBox does.
-    class Input;
-    Input* _field = nullptr;
-    ax::Node* _clip = nullptr;
-    ax::Node* _label = nullptr;
-    ax::Node* _caret = nullptr;
-    std::string _shownText;
-    int _shownCursor = -1;
-    float _blink = 0;
+    // UO-font text box (unicode font 1, black border) as ClassicUO's StbTextBox.
+    uo::client::text::TextBox* _box = nullptr;
 };
 
 // checkertrans: makes whatever it overlaps half transparent. Applied once when the layout is
@@ -245,6 +233,9 @@ class CheckerTrans : public Control
 public:
     CheckerTrans(float width, float height);
 };
+
+// Logs, once per id per run, a gump art id the client files lack and what was drawn instead.
+void reportMissingGump(uint16_t id, const char* use);
 
 // Hue for HTML text as ClassicUO's HtmlControl.InternalBuild picks it: an explicit wire colour
 // (RGB555) wins; otherwise near-black on backgrounds and white on bare gumps. RGBA8, R first.
