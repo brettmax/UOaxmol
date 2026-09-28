@@ -138,3 +138,26 @@ TEST_CASE("speech lands in the journal")
     CHECK(w.journal()[0].name == "Brett");
     CHECK(w.journal()[0].text == "H\xC3\xA9");
 }
+
+TEST_CASE("cliloc messages keep their number and arguments for the text layer")
+{
+    World w;
+    Bytes p{0xC1, 0, 0};
+    be32(p, 0xFFFFFFFF);
+    be16(p, 0xFFFF);
+    p.push_back(6);
+    be16(p, 0x3B2);
+    be16(p, 3);
+    be32(p, 500000);
+    ascii(p, "System", 30);
+    for (char c : std::string("Brett\t#1000"))
+        le16(p, static_cast<std::uint16_t>(c));
+    le16(p, 0);
+    p[2] = static_cast<std::uint8_t>(p.size());
+    REQUIRE(w.handle(p));
+    const JournalEntry& j = w.journal().back();
+    CHECK(j.clilocNumber == 500000);
+    CHECK(j.clilocArgs == "Brett\t#1000");
+    CHECK(j.unicode);
+    CHECK(j.text.empty());
+}

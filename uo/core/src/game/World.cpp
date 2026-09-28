@@ -263,7 +263,7 @@ bool World::handle(std::span<const std::uint8_t> packet)
         r.readU16BE();  // graphic
         j.type = r.readU8();
         j.hue  = r.readU16BE();
-        r.readU16BE();  // font
+        j.font = r.readU16BE();
         j.name = r.readASCII(30);
         j.text = r.readASCII();
         addMessage(std::move(j));
@@ -277,11 +277,40 @@ bool World::handle(std::span<const std::uint8_t> packet)
         j.serial = r.readU32BE();
         r.readU16BE();
         j.type = r.readU8();
-        j.hue  = r.readU16BE();
-        r.readU16BE();
+        j.hue     = r.readU16BE();
+        j.font    = r.readU16BE();
+        j.unicode = true;
         r.skip(4);  // language
         j.name = r.readASCII(30);
         j.text = r.readUnicodeBE();
+        addMessage(std::move(j));
+        return true;
+    }
+
+    case 0xC1:  // cliloc message
+    case 0xCC:  // cliloc message with affix
+    {
+        r.skip(2);
+        JournalEntry j;
+        j.serial       = r.readU32BE();
+        r.readU16BE();  // graphic
+        j.type         = r.readU8();
+        j.hue          = r.readU16BE();
+        j.font         = r.readU16BE();
+        j.unicode      = true;
+        j.clilocNumber = r.readU32BE();
+        if (id == 0xCC)
+            j.affixPrepend = (r.readU8() & 0x01) != 0;
+        j.name = r.readASCII(30);
+        if (id == 0xCC)
+        {
+            j.affix      = r.readASCII();
+            j.clilocArgs = r.readUnicodeBE();
+        }
+        else
+        {
+            j.clilocArgs = r.readUnicodeLE();  // 0xC1 arguments are little-endian
+        }
         addMessage(std::move(j));
         return true;
     }
