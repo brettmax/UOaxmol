@@ -117,6 +117,7 @@ void GameClient::shutdown()
     disconnectedHandler = nullptr;
     if (_session.state() != uo::net::Session::State::Disconnected)
         _session.stop();
+    _transport.shutdown();
     _gumps.reset();
     _audio.shutdown();
     uo::client::text::TextSystem::instance().shutdown();

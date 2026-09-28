@@ -47,13 +47,25 @@ YasioTransport::YasioTransport()
 
 YasioTransport::~YasioTransport()
 {
+    shutdown();
+}
+
+void YasioTransport::shutdown()
+{
     _session = nullptr;
+    _current = nullptr;
+    _channel = -1;
+    if (!_service)
+        return;
     _service->stop();
     delete _service;
+    _service = nullptr;
 }
 
 void YasioTransport::connect(const std::string& host, std::uint16_t port)
 {
+    if (!_service)
+        return;
     _channel = _nextChannel;
     _nextChannel ^= 1;
     _current = nullptr;
@@ -63,12 +75,16 @@ void YasioTransport::connect(const std::string& host, std::uint16_t port)
 
 void YasioTransport::send(std::vector<std::uint8_t> bytes)
 {
+    if (!_service)
+        return;
     if (_current)
         _service->write(_current, bytes.data(), bytes.size());
 }
 
 void YasioTransport::disconnect()
 {
+    if (!_service)
+        return;
     if (_channel >= 0)
         _service->close(_channel);
     _current = nullptr;
@@ -78,5 +94,7 @@ void YasioTransport::disconnect()
 
 void YasioTransport::poll()
 {
+    if (!_service)
+        return;
     _service->dispatch(128);
 }

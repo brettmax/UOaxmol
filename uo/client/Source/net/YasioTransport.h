@@ -32,6 +32,9 @@ public:
 
     // Delivers queued network events. Call once per frame.
     void poll();
+    // Stops the io_service thread. Idempotent; must run before static destruction, where
+    // yasio's own globals may already be gone (GameClient::shutdown calls it).
+    void shutdown();
 
 private:
     yasio::io_service* _service   = nullptr;
