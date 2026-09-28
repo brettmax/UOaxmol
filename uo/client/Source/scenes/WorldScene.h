@@ -3,7 +3,9 @@
 
 #include "axmol/axmol.h"
 
+#include "uo/assets/AnimData.h"
 #include "uo/assets/Texmaps.h"
+#include "uo/render/AnimatedStatics.h"
 #include "uo/render/Pick.h"
 #include "uo/render/WorldMap.h"
 #include "uo/render/WorldSource.h"
@@ -139,6 +141,8 @@ private:
     uo::render::WorldRenderer* _renderer = nullptr;
     std::vector<uo::render::DrawItem> _drawList;
     std::unique_ptr<uo::render::ArtHitTest> _hitTest;
+    std::unique_ptr<uo::assets::AnimData> _animData;
+    std::unique_ptr<uo::render::AnimatedStatics> _animatedStatics;
     bool _drawListDirty = true;
     int _viewX = -1, _viewY = -1, _viewZ = -1000;
 

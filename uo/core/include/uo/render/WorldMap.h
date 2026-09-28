@@ -21,6 +21,7 @@
 
 #include "uo/render/HueVector.h"
 #include "uo/render/LandStretch.h"
+#include "uo/render/Seasons.h"
 #include "uo/render/WorldSource.h"
 
 namespace uo::anim
@@ -30,6 +31,8 @@ struct Frame;
 
 namespace uo::render
 {
+
+class AnimatedStatics;
 
 enum class ObjectKind : uint8_t
 {
@@ -75,6 +78,10 @@ struct ViewParams
     // Screen offset subtracted from every object's isometric position
     // (ClassicUO's _offset: the camera's top-left in world pixels).
     int offsetX = 0, offsetY = 0;
+
+    // Animated item art (water, fires): adds the current frame offset to the graphic of
+    // statics and ground items. Null draws the first frame.
+    const AnimatedStatics* animatedStatics = nullptr;
 
     // Objects (not land) at or above this Z are skipped: roofs and upper floors
     // when the player is indoors. 127 draws everything.
@@ -227,6 +234,13 @@ public:
     // (Map.CalculateNearZ), or defaultZ when there is no roof there.
     int calculateNearZ(int defaultZ, int x, int y, int z) const;
 
+    // Season for land and static graphics (Land/Static.UpdateGraphicBySeason) and for hiding
+    // foliage in winter. Loaded blocks are rebuilt in place; dynamic objects are kept, but
+    // WorldObject pointers from an earlier draw list are invalidated. `table` defaults to
+    // ClassicUO's seasons.txt and must outlive the map.
+    void setSeason(SeasonId season, const SeasonTable* table = nullptr);
+    SeasonId season() const { return _season; }
+
     const Cell* cellAt(int x, int y) const;
     bool isLoaded(int blockX, int blockY) const { return findBlock(blockX, blockY) != nullptr; }
 
@@ -238,6 +252,8 @@ private:
     const IMapSource& _map;
     const ITileData& _tiles;
     std::unordered_map<uint64_t, Block> _blocks;
+    SeasonId _season            = SeasonId::Summer;
+    const SeasonTable* _seasons = &SeasonTable::defaults();
 };
 
 }  // namespace uo::render

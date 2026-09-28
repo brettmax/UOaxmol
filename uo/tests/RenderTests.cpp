@@ -12,6 +12,8 @@
 #include <vector>
 
 #include "uo/assets/Texmaps.h"
+#include "uo/assets/AnimData.h"
+#include "uo/render/AnimatedStatics.h"
 #include "uo/render/HueTexture.h"
 #include "uo/render/HueVector.h"
 #include "uo/render/LandStretch.h"
@@ -727,4 +729,137 @@ TEST_CASE("view Z limits follow GameScene.UpdateMaxDrawZ")
         CHECK(v.maxZ == 16);
         CHECK(v.maxGroundZ == 16);
     }
+}
+
+TEST_CASE("seasons swap graphics and hide winter foliage like SeasonManager")
+{
+    const SeasonTable& defaults = SeasonTable::defaults();
+    CHECK(defaults.staticGraphic(SeasonId::Spring, 0x0CA7) == 0x0C84);
+    CHECK(defaults.staticGraphic(SeasonId::Summer, 0x0CA7) == 0x0CA7);
+    CHECK(defaults.landGraphic(SeasonId::Winter, 196) == 282);
+    CHECK(defaults.landGraphic(SeasonId::Summer, 196) == 196);
+
+    SeasonTable custom;
+    custom.parse("# comment\n// another\nwinter, static, 0x10, 20\r\nFALL,landtile,3,0x5\nbad,line\n");
+    CHECK(custom.staticGraphic(SeasonId::Winter, 0x10) == 20);
+    CHECK(custom.landGraphic(SeasonId::Fall, 3) == 5);
+    CHECK(custom.landGraphic(SeasonId::Winter, 3) == 3);
+
+    constexpr uint16_t kLeaves = 0x0200, kWinterTree = 0x0201, kSummerTree = 0x0202;
+    custom.set(SeasonId::Winter, false, kSummerTree, kWinterTree);
+    custom.set(SeasonId::Winter, true, 3, 4);
+
+    FakeMap map(8, 8);
+    FakeTiles tiles;
+    tiles.items[kLeaves]     = {assets::TF_Foliage, 10};
+    tiles.items[kSummerTree] = {assets::TF_Impassable, 20};
+    tiles.items[kWinterTree] = {assets::TF_Impassable, 20};
+    map.addStatic(1, 1, 0, kLeaves);
+    map.addStatic(2, 2, 0, kSummerTree);
+
+    WorldMap world(map, tiles);
+    world.setSeason(SeasonId::Summer, &custom);
+    ViewParams view;
+    view.maxTileX = 7, view.maxTileY = 7;
+    world.ensureLoaded(view);
+
+    WorldObject item;
+    item.kind   = ObjectKind::Item;
+    item.serial = 0x40000009;
+    item.x = item.y = 3;
+    item.graphic    = 0x0300;
+    REQUIRE(world.addObject(item));
+
+    auto count = [&](uint16_t g) {
+        std::vector<DrawItem> list;
+        world.buildDrawList(view, list);
+        int n = 0;
+        for (const DrawItem& d : list)
+        {
+            n += d.graphic == g;
+        }
+        return n;
+    };
+    auto landGraphic = [&](int x, int y) {
+        for (const WorldObject& o : *world.cellAt(x, y))
+        {
+            if (o.kind == ObjectKind::Land)
+            {
+                return o.graphic;
+            }
+        }
+        return uint16_t(0);
+    };
+
+    CHECK(count(kLeaves) == 1);
+    CHECK(count(kSummerTree) == 1);
+    CHECK(landGraphic(4, 4) == 3);
+
+    world.setSeason(SeasonId::Winter, &custom);
+    CHECK(world.season() == SeasonId::Winter);
+    CHECK(count(kLeaves) == 0);
+    CHECK(count(kSummerTree) == 0);
+    CHECK(count(kWinterTree) == 1);
+    CHECK(landGraphic(4, 4) == 4);
+    CHECK(count(0x0300) == 1);  // dynamic objects survive the reload
+
+    world.setSeason(SeasonId::Summer, &custom);
+    CHECK(count(kLeaves) == 1);
+    CHECK(landGraphic(4, 4) == 3);
+}
+
+TEST_CASE("animated item art cycles animdata offsets like AnimatedStaticsManager")
+{
+    // animdata.mul: groups of { u32 header; 8 x 68-byte entries }. Graphic 0x100 animates
+    // through offsets 0, 2, 5 with frame interval 2.
+    constexpr uint16_t g = 0x100;
+    std::vector<uint8_t> bytes(static_cast<size_t>(g / 8 + 1) * (4 + 8 * 68), 0);
+    uint8_t* e1 = bytes.data() + g * 68 + 4 * (g / 8 + 1);
+    e1[0] = 0, e1[1] = 2, e1[2] = 5;
+    e1[65] = 3;  // frame count
+    e1[66] = 2;  // frame interval
+    assets::AnimData animData;
+    animData.loadFromBytes(bytes);
+
+    FakeTiles tiles;
+    tiles.items[g] = {assets::TF_Animation, 0};
+    AnimatedStatics anim(tiles, animData);
+    REQUIRE(anim.count() == 1);
+
+    CHECK_FALSE(anim.update(1000));  // first frame is offset 0: nothing changed
+    CHECK(anim.offset(g) == 0);
+    CHECK_FALSE(anim.update(1100));  // interval 2 x 100 ms not yet elapsed
+    CHECK(anim.update(1202));
+    CHECK(anim.offset(g) == 2);
+    CHECK(anim.animated(g) == g + 2);
+    CHECK(anim.update(1404));
+    CHECK(anim.offset(g) == 5);
+    anim.update(1606);
+    CHECK(anim.offset(g) == 0);  // wraps
+    CHECK(anim.offset(g + 1) == 0);  // not animated
+
+    // The draw list shows the current frame for statics.
+    anim.update(1808);
+    REQUIRE(anim.offset(g) == 2);
+    FakeMap map(8, 8);
+    map.addStatic(1, 1, 0, g);
+    WorldMap world(map, tiles);
+    ViewParams view;
+    view.maxTileX = 7, view.maxTileY = 7;
+    world.ensureLoaded(view);
+    view.animatedStatics = &anim;
+
+    std::vector<DrawItem> list;
+    world.buildDrawList(view, list);
+    int frames = 0;
+    for (const DrawItem& d : list)
+    {
+        if (d.type == DrawType::Static)
+        {
+            CHECK(d.graphic == g + 2);
+            CHECK(d.object->graphic == g);
+            ++frames;
+        }
+    }
+    CHECK(frames == 1);
 }
