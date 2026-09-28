@@ -17,7 +17,9 @@ Image Texmaps::texmap(std::uint32_t texId) const
 
 Image Texmaps::decode(std::span<const std::uint8_t> raw)
 {
-    const int size = raw.size() == 0x2000 ? 64 : 128;
+    if (raw.empty())
+        return {};
+    const int size = sizeFor(raw.size());
     const std::size_t bytes = static_cast<std::size_t>(size) * size * 2;
 
     if (raw.size() < bytes)

@@ -5,6 +5,7 @@
 #include "uo/assets/Image.h"
 #include "uo/io/UOFile.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -27,6 +28,8 @@ public:
     }
 
     Image texmap(std::uint32_t texId) const;
+
+    static int sizeFor(std::size_t length) { return length == 0x2000 ? 64 : 128; }
 
     static Image decode(std::span<const std::uint8_t> raw);
 
