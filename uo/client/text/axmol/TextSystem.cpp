@@ -22,7 +22,8 @@ bool TextSystem::init(const assets::Installation& installation)
     _hues         = std::make_unique<uo::text::HuesResolver>(installation.hues());
     _fonts.setHueResolver(_hues.get());
     _defaultFont = installation.options().version >= makeVersion(3, 0, 5, 'd') ? 1 : 0;  // CV_305D
-    return _fonts.load(installation);
+    _fontsLoaded = _fonts.load(installation);
+    return _fontsLoaded;
 }
 
 void TextSystem::shutdown()
@@ -30,6 +31,7 @@ void TextSystem::shutdown()
     _fonts.setHueResolver(nullptr);
     _hues.reset();
     _installation = nullptr;
+    _fontsLoaded  = false;
 }
 
 const assets::Cliloc& TextSystem::cliloc() const

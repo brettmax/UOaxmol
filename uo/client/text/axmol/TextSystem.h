@@ -31,7 +31,8 @@ public:
     bool init(const assets::Installation& installation);
     void shutdown();
 
-    bool ready() const { return _installation != nullptr; }
+    // True once init() has loaded fonts.mul; without it there are no glyphs to draw.
+    bool ready() const { return _installation != nullptr && _fontsLoaded; }
 
     const uo::text::FontRenderer& fonts() const { return _fonts; }
     // Mutable access for HTML mode and visited links.
@@ -49,6 +50,7 @@ private:
     std::unique_ptr<uo::text::HuesResolver> _hues;
     const assets::Installation* _installation = nullptr;
     std::uint8_t _defaultFont = 1;
+    bool _fontsLoaded         = false;
 };
 
 }  // namespace uo::client::text

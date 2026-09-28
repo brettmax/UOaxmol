@@ -83,10 +83,10 @@ bool GameClient::loadAssets()
         _gumpText.reset();
         if (uo::client::text::TextSystem::instance().init(_install))
             _gumpText = std::make_unique<uo::client::gumps::UoFontGumpText>(_install);
-        if (_gumps)
-            _gumps->setText(_gumpText.get());
         else
             AXLOGW("AxmolUO: fonts.mul not found; UO fonts disabled");
+        if (_gumps)
+            _gumps->setText(_gumpText.get());
         _audio.shutdown();
         _audio.initialize(_install.sounds());
         _audio.setClientVersion(_settings.clientVersion);
