@@ -69,6 +69,19 @@ bool transparentTest(const WorldObject& obj, const StaticTileData& d, int z)
 
 }  // namespace
 
+bool isTree(uint16_t graphic, const StaticTileData& data)
+{
+    // StaticFilters.Load's treeTiles, sorted.
+    static constexpr uint16_t kTrees[] = {
+        0x0C95, 0x0C96, 0x0C99, 0x0C9B, 0x0C9C, 0x0C9D, 0x0C9E, 0x0CA6, 0x0CA8, 0x0CAA, 0x0CAB, 0x0CC9, 0x0CCA,
+        0x0CCB, 0x0CCC, 0x0CCD, 0x0CD0, 0x0CD3, 0x0CD6, 0x0CD8, 0x0CDA, 0x0CDD, 0x0CE0, 0x0CE3, 0x0CE6, 0x0CF8,
+        0x0CFB, 0x0CFE, 0x0D01, 0x0D37, 0x0D38, 0x0D41, 0x0D42, 0x0D43, 0x0D44, 0x0D57, 0x0D58, 0x0D59, 0x0D5A,
+        0x0D5B, 0x0D6E, 0x0D6F, 0x0D70, 0x0D71, 0x0D72, 0x0D84, 0x0D85, 0x0D86, 0x0D94, 0x0D98, 0x0D9C, 0x0DA0,
+        0x0DA4, 0x0DA8, 0x12B6, 0x12B7, 0x12B8, 0x12B9, 0x12BA, 0x12BB, 0x12BC, 0x12BD,
+    };
+    return data.is(assets::TF_Impassable) && std::binary_search(std::begin(kTrees), std::end(kTrees), graphic);
+}
+
 bool canDrawStatic(uint16_t g, const StaticTileData& data, bool gargoyle)
 {
     switch (g)
@@ -619,9 +632,9 @@ void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out,
 
                 const bool foliage = data.is(assets::TF_Foliage);
 
-                // Foliage stays visible inside the circle (trees too, pending the
-                // StaticFilters tree table).
-                const bool cot = view.circleOfTransparency && !foliage && transparentTest(obj, data, view.playerZ + 5);
+                // Trees and foliage stay visible inside the circle (StaticView.Draw).
+                const bool cot = view.circleOfTransparency && !foliage && !isTree(obj.graphic, data) &&
+                                 transparentTest(obj, data, view.playerZ + 5);
 
                 if (view.staticShadows && foliage)
                 {
