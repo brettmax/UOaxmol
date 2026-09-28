@@ -127,6 +127,13 @@ TEST_CASE("tiledata parses the pre-High Seas layout")
     }
 
     CHECK(TileData::detect(f.size()) == TileData::Format::Old);
+    // A 7.0.9+ client version only breaks ties: Second Age files keep the old layout under it.
+    CHECK(TileData::detect(f.size(), TileData::Format::New) == TileData::Format::Old);
+    CHECK(TileData::detect(0, TileData::Format::New) == TileData::Format::New);
+    CHECK(TileData::detect(0) == TileData::Format::Old);
+    // The real files: Second Age (0x2000 statics) and 7.0.9+ (0x10000 statics, 64-bit flags).
+    CHECK(TileData::detect(1036288, TileData::Format::New) == TileData::Format::Old);
+    CHECK(TileData::detect(3188736) == TileData::Format::New);
     TileData t;
     REQUIRE(t.loadFromBytes(f));
     REQUIRE(t.land().size() == 512 * 32);

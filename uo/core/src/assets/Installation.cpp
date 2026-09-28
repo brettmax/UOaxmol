@@ -78,7 +78,15 @@ bool Installation::load(const Options& options)
         return false;
     }
 
-    auto format = options.version >= cv::CV_7090 ? TileData::Format::New : TileData::Format::Auto;
+    // The record layout belongs to the file, not to the protocol version: Second Age data run
+    // with the default 7.0.15.1 version still has 32-bit flags, and reading it as 64-bit
+    // shifts every texId and flag (no stretched hills, random roofs over the player). The
+    // version only settles a size both layouts fit.
+    const auto tiledataSize = fs::file_size(path("tiledata.mul"), ec);
+    const auto format       = ec ? TileData::Format::Auto
+                                 : TileData::detect(static_cast<std::size_t>(tiledataSize),
+                                                    options.version >= cv::CV_7090 ? TileData::Format::New
+                                                                                   : TileData::Format::Old);
     if (!_tileData.load(path("tiledata.mul"), format))
     {
         _error = "tiledata.mul is missing or malformed";
