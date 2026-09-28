@@ -427,6 +427,46 @@ TEST_CASE("circle of transparency marks eligible statics")
     }
 }
 
+TEST_CASE("trees stay visible inside the circle of transparency")
+{
+    CHECK(isTree(0x0CCA, StaticTileData{assets::TF_Impassable, 20}));
+    CHECK_FALSE(isTree(0x0CCA, StaticTileData{0, 20}));  // passable: vegetation, not a tree
+    CHECK_FALSE(isTree(0x0CCF, StaticTileData{assets::TF_Impassable, 20}));
+    CHECK(isTree(0x12BD, StaticTileData{assets::TF_Impassable, 20}));
+
+    FakeMap map(8, 8);
+    FakeTiles tiles;
+    tiles.items[0x0CCA] = {assets::TF_Impassable | assets::TF_Wall, 20};  // tree
+    tiles.items[0x0CCB] = {assets::TF_Wall, 20};                          // passable: not a tree
+    map.addStatic(1, 1, 10, 0x0CCA);
+    map.addStatic(2, 2, 10, 0x0CCB);
+
+    WorldMap world(map, tiles);
+    ViewParams view;
+    view.maxTileX = 7, view.maxTileY = 7;
+    view.circleOfTransparency = true;
+    world.ensureLoaded(view);
+
+    std::vector<DrawItem> list;
+    world.buildDrawList(view, list);
+
+    int seen = 0;
+    for (const DrawItem& d : list)
+    {
+        if (d.graphic == 0x0CCA)
+        {
+            CHECK(d.hue.alpha <= 1.0f);
+            ++seen;
+        }
+        if (d.graphic == 0x0CCB)
+        {
+            CHECK(d.hue.alpha > 1.0f);
+            ++seen;
+        }
+    }
+    CHECK(seen == 2);
+}
+
 TEST_CASE("geometry places land, stretched land and statics like Batcher2D")
 {
     FakeMap map(8, 8);

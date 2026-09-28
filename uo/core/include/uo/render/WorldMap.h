@@ -160,6 +160,11 @@ inline float depthKey(int x, int y, int priorityZ)
 // ClassicUO GameObject.CanBeDrawn for statics.
 bool canDrawStatic(uint16_t graphic, const StaticTileData& data, bool gargoyle = false);
 
+// ClassicUO StaticFilters.IsTree with its default tree.txt: a graphic from the
+// built-in tree list whose tiledata is impassable (passable ones count as
+// vegetation instead). Trees are never cut by the circle of transparency.
+bool isTree(uint16_t graphic, const StaticTileData& data);
+
 // Priority Z and tile-list insertion state (Chunk.AddGameObject). state 0 is
 // land, 1 a multi component, 2 a multi preview, -1 anything else.
 struct Priority
