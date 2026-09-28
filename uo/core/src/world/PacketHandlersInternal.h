@@ -5,24 +5,27 @@
 #include "uo/io/BinaryReader.h"
 #include "uo/world/World.h"
 
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace uo::world::detail
 {
 
 // ClassicUO ReadASCII(len): len == 0 reads nothing, len < 0 reads to NUL/end,
-// len > 0 reads a fixed-width field. (BinaryReader treats width 0 as "to NUL".)
+// len > 0 reads a fixed-width field. (BinaryReader treats width 0 as "to NUL".) Packet text
+// is Windows-1252, returned as UTF-8.
 inline std::string ascii(io::BinaryReader& r, int len)
 {
     if (len == 0)
         return {};
-    return r.readASCII(len < 0 ? 0 : size_t(len));
+    return r.readASCII(len < 0 ? 0 : size_t(len), true);
 }
 
-// UTF-8 fields are byte strings on the wire, so they read like ASCII.
+// UTF-8 fields are byte strings on the wire, copied as they are.
 inline std::string utf8(io::BinaryReader& r, int len, bool safe = true)
 {
-    std::string s = ascii(r, len);
+    std::string s = len == 0 ? std::string() : r.readASCII(len < 0 ? 0 : size_t(len));
     if (safe)
     {
         std::erase_if(s, [](char c) {
@@ -45,12 +48,6 @@ inline std::string unicodeLE(io::BinaryReader& r, int chars)
     if (chars == 0)
         return {};
     return r.readUnicodeLE(chars < 0 ? 0 : size_t(chars));
-}
-
-inline uint64_t u64be(io::BinaryReader& r)
-{
-    uint64_t hi = r.readU32BE();
-    return (hi << 32) | r.readU32BE();
 }
 
 // Cliloc text, or `fallback` when no resolver is attached or the number is unknown.

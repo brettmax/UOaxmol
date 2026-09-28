@@ -124,6 +124,7 @@ class World
 {
 public:
     World() = default;
+    explicit World(ClientVersion version) : clientVersion(version) {}
     World(const World&) = delete;
     World& operator=(const World&) = delete;
 
@@ -217,9 +218,6 @@ public:
     std::unordered_map<Serial, uint32_t> customHouseRevisions; // last decoded 0xD8 revision
     // Supplied by the client from the multi loader; needed to decode 0xD8 planes.
     std::function<std::optional<MultiBounds>(uint16_t multiGraphic)> multiBounds;
-    // zlib inflate of `in` into exactly `out.size()` bytes; needed for 0xD8. uocore has no
-    // zlib dependency yet, so the client supplies it.
-    std::function<bool(std::span<const uint8_t> in, std::span<uint8_t> out)> inflate;
 
     // GameActions.RequestMobileStatus / SendCloseStatus, including HitsRequest bookkeeping.
     void requestMobileStatus(Serial serial, bool force = false);
