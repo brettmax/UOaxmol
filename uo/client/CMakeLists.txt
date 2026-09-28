@@ -77,6 +77,19 @@ ax_setup_app_config(${APP_NAME})
 # Add any libraries you need to link to the project after this point
 target_link_libraries(${APP_NAME} uocore)
 
+# Mouse and keyboard movement and targeting (uo/client/input).
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/input ${CMAKE_BINARY_DIR}/uo_client_input)
+target_link_libraries(${APP_NAME} uo_client_input)
+
+# Batched world renderer and GPU hue shader (uo/client/world).
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world ${CMAKE_BINARY_DIR}/uo_world)
+target_link_libraries(${APP_NAME} uo_world_axmol)
+uo_world_add_shaders(${APP_NAME})
+
+# UO fonts (fonts.mul, unifont), cliloc text, overhead text and journal (uo/client/text).
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/text ${CMAKE_BINARY_DIR}/uo_text)
+target_link_libraries(${APP_NAME} uo_text_axmol)
+
 # Default Platform-specific setup
 include(AXGamePlatformSetup)
 

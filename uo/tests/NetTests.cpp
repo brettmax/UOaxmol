@@ -2,7 +2,7 @@
 #include "TestUtil.h"
 #include "doctest.h"
 
-#include "uo/game/World.h"
+#include "uo/world/PacketHandlers.h"
 #include "uo/net/Huffman.h"
 #include "uo/net/OutgoingPackets.h"
 #include "uo/net/PacketFramer.h"
@@ -117,7 +117,9 @@ struct Recorder : SessionListener
     std::vector<CharacterSlot> characters;
     std::vector<Bytes> game;
     std::string error;
-    game::World world;
+    world::World world;
+    world::PacketHandlers handlers;
+    PacketTable table{world.clientVersion};
 
     void onShardList(const std::vector<ShardInfo>& s) override { shards = s; }
     void onCharacterList(const std::vector<CharacterSlot>& c) override { characters = c; }
@@ -125,7 +127,7 @@ struct Recorder : SessionListener
     void onGamePacket(std::span<const std::uint8_t> p) override
     {
         game.emplace_back(p.begin(), p.end());
-        world.handle(p);
+        handlers.handle(world, p, table);
     }
 };
 

@@ -2,24 +2,33 @@
 #include "WorldScene.h"
 
 #include "GameClient.h"
+#include "InputRouter.h"
 #include "LoginScene.h"
 
 #include "uo/net/OutgoingPackets.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 
 using namespace ax;
-using uo::game::Direction;
-using KeyCode = KeyboardEvent::KeyCode;
+using uo::client::input::InputRouter;
+using uo::client::input::MouseButton;
 
 namespace
 {
 constexpr const char* kFont = "fonts/arial.ttf";
-constexpr float kWalkDelay  = 0.4f;  // on-foot walking pace, seconds per tile
-constexpr float kRunDelay   = 0.2f;
+constexpr float kPickRadius = 24.f;  // how far from an entity's marker a click still picks it
 
-Color32 notorietyColor(std::uint8_t n)
+// The map the world is on; the world reports -1 until 0x1B / 0xBF 0x08 set it.
+int currentMap()
 {
+    return std::max(0, GameClient::instance().world().mapIndex);
+}
+
+Color32 notorietyColor(uo::world::Notoriety notoriety)
+{
+    const auto n = static_cast<std::uint8_t>(notoriety);
     switch (n)
     {
     case 1: return Color32(80, 140, 255, 255);   // innocent
@@ -44,6 +53,9 @@ int WorldScene::depth(int x, int y, int z, int bias)
 {
     return (x + y) * 1024 + (std::clamp(z, -128, 127) + 128) * 2 + bias;
 }
+
+WorldScene::WorldScene()  = default;
+WorldScene::~WorldScene() = default;
 
 bool WorldScene::init()
 {
@@ -71,10 +83,14 @@ bool WorldScene::init()
     _coords->enableOutline(Color32::black, 1);
     addChild(_coords, 10);
 
-    _keys                = KeyboardEventListener::create();
-    _keys->onKeyPressed  = AX_CALLBACK_1(WorldScene::onKeyPressed, this);
-    _keys->onKeyReleased = AX_CALLBACK_1(WorldScene::onKeyReleased, this);
-    _eventDispatcher->addEventListenerWithSceneGraphPriority(_keys, this);
+    // Mouse and arrow-key walking, clicks, double-clicks and Escape. Until gumps claim their own
+    // clicks, the whole window is the game world.
+    InputRouter::Callbacks callbacks;
+    callbacks.isOverWorld   = [](Vec2) { return true; };
+    callbacks.onClick       = [this](MouseButton b, Vec2 p) { onClick(b, p); };
+    callbacks.onDoubleClick = [this](MouseButton b, Vec2 p) { onDoubleClick(b, p); };
+    callbacks.onEscape      = [this] { onEscape(); };
+    _input = std::make_unique<InputRouter>(std::move(callbacks), GameClient::instance().movement().options.input);
 
     scheduleUpdate();
     return true;
@@ -86,34 +102,57 @@ void WorldScene::onEnter()
     auto& gc    = GameClient::instance();
     auto& world = gc.world();
 
-    world.onEntityUpdated = [this](const uo::game::Entity& e) { syncEntity(e); };
-    world.onEntityRemoved = [this](std::uint32_t s) { removeEntity(s); };
-    world.onMessage       = [this](const uo::game::JournalEntry&) { refreshJournal(); };
-    gc.disconnectedHandler = [this] { _director->replaceScene(utils::createInstance<LoginScene>()); };
+    gc.entityUpdatedHandler = [this](const uo::world::Entity& e) { syncEntity(e); };
+    gc.entityRemovedHandler = [this](uo::world::Serial s) { removeEntity(s); };
+    gc.messageHandler       = [this](const uo::world::Message&) { refreshJournal(); };
+    gc.disconnectedHandler  = [this] { _director->replaceScene(utils::createInstance<LoginScene>()); };
 
-    for (const auto& [serial, e] : world.entities())
-        syncEntity(e);
+    _input->attach(this);
+    gc.cancelDoubleClickHandler = [this] { _input->cancelDoubleClick(); };
+
+    world.forEachMobile([this](uo::world::Mobile& m) { syncEntity(m); });
+    world.forEachItem([this](uo::world::Item& i) { syncEntity(i); });
     refreshJournal();
     streamBlocks();
     centerCamera();
+
+    // Smoke-test hook: AXMOLUO_SCREENSHOT=/path/shot.png captures the world view and quits.
+    if (const char* shot = std::getenv("AXMOLUO_SCREENSHOT"))
+    {
+        std::string path = shot;
+        scheduleOnce(
+            [this, path](float) {
+                utils::captureScreen([this](bool ok, std::string_view file) {
+                    if (_quitting)
+                        return;
+                    _quitting = true;
+                    AXLOGI("AxmolUO screenshot {}: {}", ok ? "saved" : "failed", file);
+                    _director->end();
+                }, path);
+            },
+            2.0f, "screenshot");
+    }
 }
 
 void WorldScene::onExit()
 {
-    auto& gc               = GameClient::instance();
-    gc.world().onEntityUpdated = nullptr;
-    gc.world().onEntityRemoved = nullptr;
-    gc.world().onMessage       = nullptr;
-    gc.disconnectedHandler     = nullptr;
+    auto& gc                = GameClient::instance();
+    gc.entityUpdatedHandler = nullptr;
+    gc.entityRemovedHandler = nullptr;
+    gc.messageHandler       = nullptr;
+    gc.disconnectedHandler  = nullptr;
+    gc.cancelDoubleClickHandler = nullptr;
+    _input->detach();
     Scene::onExit();
 }
 
 void WorldScene::update(float dt)
 {
-    GameClient::instance().update(dt);
-    handleWalking(dt);
+    auto& gc = GameClient::instance();
+    gc.update(dt);
+    gc.updateMovement(_input->movementIntent(playerScreenPoint(), gc.movement().autoWalker().active()), dt);
 
-    if (const auto* p = GameClient::instance().world().player())
+    if (const auto* p = gc.world().player())
     {
         if (p->x != _lastPlayerX || p->y != _lastPlayerY)
         {
@@ -122,8 +161,181 @@ void WorldScene::update(float dt)
             streamBlocks();
             _coords->setString(fmt::format("{}, {}, {}", p->x, p->y, p->z));
         }
+        placeMobiles();
         centerCamera();
     }
+}
+
+Vec2 WorldScene::mobilePosition(const uo::world::Entity& e) const
+{
+    Vec2 pos = tileToWorld(e.x, e.y, e.z);
+    if (const auto* clock = GameClient::instance().movement().motion(e.serial))
+    {
+        // ClassicUO draws at (x + Offset.X, y + Offset.Y - Offset.Z) with y down.
+        pos += Vec2(clock->offsetX, -(clock->offsetY - clock->offsetZ));
+    }
+    return pos;
+}
+
+void WorldScene::placeMobiles()
+{
+    auto& world = GameClient::instance().world();
+    for (auto& [serial, node] : _entities)
+    {
+        if (const auto* e = world.get(serial); e != nullptr && e->isMobile())
+        {
+            node->setPosition(mobilePosition(*e));
+        }
+    }
+}
+
+Vec2 WorldScene::playerScreenPoint() const
+{
+    const auto* p = GameClient::instance().world().player();
+    if (p == nullptr)
+    {
+        const auto size = _director->getVisibleSize();
+        return Vec2(size.width / 2, size.height / 2);
+    }
+    // Director::screenToCanvas is an axis-aligned affine map (scale, flip, viewport); invert it.
+    const Vec2 canvas = _worldNode->convertToWorldSpace(mobilePosition(*p));
+    const Vec2 c0     = _director->screenToCanvas(Vec2::zero);
+    const Vec2 cx     = _director->screenToCanvas(Vec2(1, 0)) - c0;
+    const Vec2 cy     = _director->screenToCanvas(Vec2(0, 1)) - c0;
+    if (cx.x == 0 || cy.y == 0)
+    {
+        return canvas;
+    }
+    return Vec2((canvas.x - c0.x) / cx.x, (canvas.y - c0.y) / cy.y);
+}
+
+std::optional<WorldScene::PickedTile> WorldScene::tileAt(Vec2 screen) const
+{
+    auto& gc        = GameClient::instance();
+    const auto* map = gc.install().map(currentMap());
+    if (map == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    // Invert tileToWorld: a = x - y, b = x + y. Guess z = 0, then correct once for the land
+    // height of the tile that guess lands on.
+    const Vec2 w = _worldNode->convertToNodeSpace(_director->screenToCanvas(screen));
+    int z = 0;
+    int x = 0, y = 0;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        const float a = w.x / 22.f;
+        const float b = (-w.y + z * 4.f) / 22.f;
+        x = static_cast<int>(std::lround((a + b) / 2.f));
+        y = static_cast<int>(std::lround((b - a) / 2.f));
+        if (x < 0 || y < 0 || x >= map->width() || y >= map->height())
+        {
+            return std::nullopt;
+        }
+        z = map->land(x, y).z;
+    }
+    return PickedTile{x, y, z};
+}
+
+uo::world::Entity* WorldScene::entityAt(Vec2 screen) const
+{
+    auto& world = GameClient::instance().world();
+    const Vec2 w = _worldNode->convertToNodeSpace(_director->screenToCanvas(screen));
+
+    uo::world::Entity* best = nullptr;
+    float bestDistance      = kPickRadius;
+    for (const auto& [serial, node] : _entities)
+    {
+        auto* e = world.get(serial);
+        if (e == nullptr)
+        {
+            continue;
+        }
+        // Mobile markers sit 30 px above their tile; item sprites stand on their anchor.
+        const Vec2 anchor = e->isMobile() ? node->getPosition() + Vec2(0, 30)
+                                          : node->getPosition() + Vec2(0, node->getContentSize().height / 2);
+        const float d = anchor.distance(w);
+        if (d < bestDistance)
+        {
+            bestDistance = d;
+            best         = e;
+        }
+    }
+    return best;
+}
+
+void WorldScene::onClick(MouseButton button, Vec2 screen)
+{
+    if (button != MouseButton::Left)
+    {
+        return;
+    }
+
+    auto& gc        = GameClient::instance();
+    auto& targeting = gc.targeting();
+    auto* entity    = entityAt(screen);
+
+    if (targeting.isTargeting())
+    {
+        if (entity != nullptr)
+        {
+            targeting.target(entity->serial);
+        }
+        else if (auto tile = tileAt(screen))
+        {
+            // Land: graphic 0. Statics are not pickable until the renderer can hit-test them.
+            targeting.target(0, static_cast<uint16_t>(tile->x), static_cast<uint16_t>(tile->y),
+                             static_cast<int16_t>(tile->z));
+        }
+        return;
+    }
+
+    if (entity != nullptr)
+    {
+        gc.singleClick(entity->serial);
+    }
+}
+
+void WorldScene::onDoubleClick(MouseButton button, Vec2 screen)
+{
+    auto& gc = GameClient::instance();
+    if (button == MouseButton::Left)
+    {
+        if (auto* entity = entityAt(screen))
+        {
+            gc.doubleClick(entity->serial);
+        }
+    }
+    else if (button == MouseButton::Right)
+    {
+        // Right double-click walks to the tile (ClassicUO's pathfind on double right-click).
+        if (auto tile = tileAt(screen))
+        {
+            gc.movement().walkTo(tile->x, tile->y, tile->z, 0);
+        }
+    }
+}
+
+void WorldScene::onEscape()
+{
+    auto& gc = GameClient::instance();
+    if (gc.targeting().isTargeting())
+    {
+        gc.targeting().cancel();
+        return;
+    }
+
+    auto& autoWalk = gc.movement().autoWalker();
+    if (autoWalk.active() && autoWalk.cancellable())
+    {
+        gc.movement().stopAutoWalk();
+        return;
+    }
+
+    // Nothing to cancel: leave the world for the login screen.
+    gc.session().stop();
+    _director->replaceScene(utils::createInstance<LoginScene>());
 }
 
 void WorldScene::centerCamera()
@@ -140,7 +352,7 @@ void WorldScene::streamBlocks()
 {
     auto& gc      = GameClient::instance();
     const auto* p = gc.world().player();
-    const auto* map = gc.install().map(gc.world().mapIndex());
+    const auto* map = gc.install().map(currentMap());
     if (!p || !map)
         return;
 
@@ -173,7 +385,7 @@ void WorldScene::streamBlocks()
 void WorldScene::buildBlock(BlockKey key)
 {
     auto& gc        = GameClient::instance();
-    const auto* map = gc.install().map(gc.world().mapIndex());
+    const auto* map = gc.install().map(currentMap());
     auto& textures  = gc.textures();
     auto& nodes     = _blocks[key];
 
@@ -213,10 +425,19 @@ void WorldScene::buildBlock(BlockKey key)
     }
 }
 
-void WorldScene::syncEntity(const uo::game::Entity& e)
+void WorldScene::syncEntity(const uo::world::Entity& e)
 {
     auto& gc = GameClient::instance();
     Node* node = nullptr;
+
+    // Only what stands in the world is drawn; equipment and container contents are not.
+    const auto* item = e.isItem() ? static_cast<const uo::world::Item*>(&e) : nullptr;
+    if (item && !item->onGround())
+    {
+        removeEntity(e.serial);
+        return;
+    }
+    const auto* mobile = e.isMobile() ? static_cast<const uo::world::Mobile*>(&e) : nullptr;
 
     if (auto it = _entities.find(e.serial); it != _entities.end())
     {
@@ -229,7 +450,6 @@ void WorldScene::syncEntity(const uo::game::Entity& e)
             // Placeholder until mobile animations are ported: a notoriety-coloured marker and name.
             node     = Node::create();
             auto dot = DrawNode::create();
-            dot->drawSolidCircle(Vec2(0, 30), 10, 0, 20, Color(notorietyColor(e.notoriety)));
             dot->setName("marker");
             node->addChild(dot);
             auto name = Label::createWithTTF(e.name, kFont, 13);
@@ -251,14 +471,20 @@ void WorldScene::syncEntity(const uo::game::Entity& e)
         _entities[e.serial] = node;
     }
 
-    if (e.isMobile())
+    if (mobile)
     {
+        // Notoriety can arrive after creation (0x78 fills it in after the entity exists).
+        if (auto* dot = dynamic_cast<DrawNode*>(node->getChildByName("marker")))
+        {
+            dot->clear();
+            dot->drawSolidCircle(Vec2(0, 30), 10, 0, 20, Color(notorietyColor(mobile->notoriety)));
+        }
         if (auto* name = dynamic_cast<Label*>(node->getChildByName("name")))
         {
             name->setString(e.name);
-            name->setTextColor(notorietyColor(e.notoriety));
+            name->setTextColor(notorietyColor(mobile->notoriety));
         }
-        node->setPosition(tileToWorld(e.x, e.y, e.z));
+        node->setPosition(mobilePosition(e));
     }
     else
     {
@@ -276,45 +502,14 @@ void WorldScene::removeEntity(std::uint32_t serial)
     }
 }
 
-void WorldScene::handleWalking(float dt)
+std::string WorldScene::journalText(const uo::world::Message& j) const
 {
-    _walkCooldown = std::max(0.f, _walkCooldown - dt);
-    if (_walkCooldown > 0 || _held.empty())
-        return;
-
-    bool up    = _held.count(KeyCode::KEY_UP_ARROW) || _held.count(KeyCode::KEY_KP_UP);
-    bool down  = _held.count(KeyCode::KEY_DOWN_ARROW) || _held.count(KeyCode::KEY_KP_DOWN);
-    bool left  = _held.count(KeyCode::KEY_LEFT_ARROW) || _held.count(KeyCode::KEY_KP_LEFT);
-    bool right = _held.count(KeyCode::KEY_RIGHT_ARROW) || _held.count(KeyCode::KEY_KP_RIGHT);
-
-    // Screen directions to UO's (rotated 45 degrees): screen up is north-west ("Up").
-    int dx = (right ? 1 : 0) - (left ? 1 : 0);
-    int dy = (up ? 1 : 0) - (down ? 1 : 0);
-    if (dx == 0 && dy == 0)
-        return;
-
-    static constexpr Direction table[3][3] = {
-        // dx = -1           0                +1
-        {Direction::South, Direction::Down, Direction::East},  // dy = -1 (screen down)
-        {Direction::Left, Direction::North, Direction::Right},  // dy = 0 (centre unused)
-        {Direction::West, Direction::Up, Direction::North},     // dy = +1 (screen up)
-    };
-    Direction dir = table[dy + 1][dx + 1];
-
-    auto& gc = GameClient::instance();
-    if (auto packet = gc.world().requestWalk(dir, _running))
-    {
-        gc.session().send(std::move(*packet));
-        _walkCooldown = _running ? kRunDelay : kWalkDelay;
-    }
-}
-
-std::string WorldScene::journalText(const uo::game::JournalEntry& j) const
-{
+    // Cliloc messages arrive translated when GameClient's resolver had the table; otherwise
+    // they carry the number and arguments.
     std::string text = j.text;
-    if (j.clilocNumber)
+    if (text.empty() && j.cliloc)
     {
-        text = GameClient::instance().install().cliloc().format(static_cast<std::int32_t>(j.clilocNumber), j.clilocArgs);
+        text = GameClient::instance().install().cliloc().format(static_cast<std::int32_t>(j.cliloc), j.clilocArgs);
         if (!j.affix.empty())
             text = j.affixPrepend ? j.affix + text : text + j.affix;
     }
@@ -334,27 +529,4 @@ void WorldScene::refreshJournal()
         out += '\n';
     }
     _journal->setString(out);
-}
-
-void WorldScene::onKeyPressed(KeyboardEvent* ev)
-{
-    auto code = ev->getKeyCode();
-    if (code == KeyCode::KEY_LEFT_SHIFT || code == KeyCode::KEY_RIGHT_SHIFT)
-        _running = true;
-    else if (code == KeyCode::KEY_ESCAPE)
-    {
-        GameClient::instance().session().stop();
-        _director->replaceScene(utils::createInstance<LoginScene>());
-    }
-    else
-        _held.insert(code);
-}
-
-void WorldScene::onKeyReleased(KeyboardEvent* ev)
-{
-    auto code = ev->getKeyCode();
-    if (code == KeyCode::KEY_LEFT_SHIFT || code == KeyCode::KEY_RIGHT_SHIFT)
-        _running = false;
-    else
-        _held.erase(code);
 }

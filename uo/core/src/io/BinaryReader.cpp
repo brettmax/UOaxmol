@@ -77,6 +77,31 @@ std::string readUtf16(BinaryReader& r, std::size_t chars, ReadUnit readUnit)
 }
 }  // namespace
 
+std::string BinaryReader::cp1252ToUtf8(std::string_view bytes)
+{
+    // 0x80-0x9F differ from Latin-1; unassigned code points map to themselves, like .NET.
+    static constexpr std::uint16_t kHigh[32] = {
+        0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160,
+        0x2039, 0x0152, 0x008D, 0x017D, 0x008F, 0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022,
+        0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+    };
+
+    std::string out;
+    out.reserve(bytes.size());
+    for (char c : bytes)
+    {
+        const auto b = static_cast<std::uint8_t>(c);
+        if (b < 0x80)
+        {
+            out.push_back(c);
+            continue;
+        }
+        const std::uint16_t unit = b < 0xA0 ? kHigh[b - 0x80] : b;
+        appendUtf16AsUtf8(out, &unit, 1);
+    }
+    return out;
+}
+
 std::string BinaryReader::readUnicodeBE(std::size_t chars)
 {
     return readUtf16(*this, chars, [this] { return readU16BE(); });
