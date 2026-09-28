@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #include "gumps/Gump.h"
 
+#include "gumps/GumpManager.h"
+
 namespace uo::client::gumps
 {
 
@@ -90,6 +92,11 @@ Gump::Gump(GumpContext& ctx, GumpKind kind, uint32_t serial, uint32_t serverId)
 {
     setIgnoreAnchorPointForPosition(true);
     setContentSize(ax::Size(0, 0));
+}
+
+GumpManager* Gump::manager() const
+{
+    return dynamic_cast<GumpManager*>(const_cast<ax::Node*>(getParent()));
 }
 
 void Gump::setScreenPosition(const ax::Vec2& p)

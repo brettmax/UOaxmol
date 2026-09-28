@@ -80,6 +80,8 @@ public:
     void setActivates(bool v) { _activates = v; }
     int toPage() const { return _toPage; }
     void setToPage(int page) { _toPage = page; }
+    // Swaps the art, e.g. a lock or expand button changing state.
+    void setGraphics(uint16_t normal, uint16_t pressed, uint16_t over = 0);
 
     // Client gumps can handle clicks directly instead of going through Gump::onButton.
     std::function<void(GumpButton*)> onClicked;
