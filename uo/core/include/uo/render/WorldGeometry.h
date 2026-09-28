@@ -47,6 +47,14 @@ public:
     // Item art for a static/item graphic. Implementations resolve animated art
     // (the art index AnimOffset) themselves.
     virtual bool itemArt(uint16_t graphic, TextureRegion& out) = 0;
+    // Texture for a decoded animation frame (AnimFrame/AnimShadow items). Sources that
+    // draw no animations keep the default.
+    virtual bool animFrame(const anim::Frame& frame, TextureRegion& out)
+    {
+        (void)frame;
+        (void)out;
+        return false;
+    }
 };
 
 // Consecutive quads that share a texture; one draw call each.

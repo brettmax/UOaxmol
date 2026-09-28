@@ -113,4 +113,37 @@ for b, items in statics.items():
     sdata += data
 w("staidx0.mul", bytes(staidx))
 w("statics0.mul", bytes(sdata))
+# anim.mul/anim.idx: one 20x40 figure (head, red torso, blue legs) in two frames, used for every
+# action and direction of the human body 0x190, so the player and NPC are drawn and animate.
+# MUL block: 256-colour palette, frame count, offsets (from after the palette), then frames of
+# RLE runs whose 10-bit x/y are relative to the frame's centre and bottom.
+apal = [0] * 256
+apal[1], apal[2], apal[3] = c16(220, 40, 40), c16(40, 80, 220), c16(240, 220, 160)
+AW, AH, ACX = 20, 40, 10
+
+
+def anim_frame(shift):
+    f = struct.pack("<hhhh", ACX, 0, AW, AH)
+    for r in range(AH):
+        colour = 3 if r < 8 else (1 if r < 24 else 2)
+        x0, x1 = ((6, 14) if r < 8 else (2, 18))
+        x0, x1 = x0 + shift, x1 + shift
+        f += struct.pack("<I", (((x0 - ACX) & 0x3FF) << 22) | (((r - AH) & 0x3FF) << 12) | (x1 - x0))
+        f += bytes([colour]) * (x1 - x0)
+    return f + struct.pack("<I", 0x7FFF7FFF)
+
+
+aframes = [anim_frame(0), anim_frame(1)]
+ablock = b"".join(struct.pack("<H", c) for c in apal) + struct.pack("<I", len(aframes))
+aoff, adata, aoffs = 4 + 4 * len(aframes), b"", []
+for fr in aframes:
+    aoffs.append(aoff + len(adata))
+    adata += fr
+ablock += b"".join(struct.pack("<I", o) for o in aoffs) + adata
+w("anim.mul", ablock)
+# People bodies (0x190+) start at block 35000, 35 actions x 5 directions each.
+aidx = bytearray(b"\xff\xff\xff\xff\0\0\0\0\0\0\0\0" * 35000)
+aidx += struct.pack("<IIi", 0, len(ablock), 0) * 175
+w("anim.idx", bytes(aidx))
+
 print("wrote", out)

@@ -23,6 +23,11 @@
 #include "uo/render/LandStretch.h"
 #include "uo/render/WorldSource.h"
 
+namespace uo::anim
+{
+struct Frame;
+}  // namespace uo::anim
+
 namespace uo::render
 {
 
@@ -100,6 +105,8 @@ enum class DrawType : uint8_t
     LandStretched,  // texmap quad, graphic is the land id (texId via tiledata)
     Static,         // item art, graphic is the item id; anchor with staticDrawOrigin
     Shadow,         // flattened item art under a static
+    AnimFrame,      // body/mount/equipment animation frame; screenX/Y is its top-left
+    AnimShadow,     // flattened animation frame under a mobile; screenX/Y is the frame's top-left
 };
 
 struct DrawItem
@@ -111,6 +118,22 @@ struct DrawItem
     float depth      = 0;
     HueVector hue;
     const WorldObject* object = nullptr;
+
+    // AnimFrame / AnimShadow only. The frame stays valid until the animation cache is
+    // cleared; `mirror` flips it horizontally (ClassicUO's IsFlipped directions).
+    const anim::Frame* frame = nullptr;
+    bool mirror              = false;
+};
+
+// Expands a mobile into its animation parts (MobileView.Draw). WorldMap calls it for every
+// drawn ObjectKind::Mobile with `base` already carrying the object, its RealScreenPosition
+// and depth; the source appends AnimFrame/AnimShadow items back to front, which keep that
+// depth and their order. A mobile it appends nothing for is not drawn.
+class IMobileDrawSource
+{
+public:
+    virtual ~IMobileDrawSource() = default;
+    virtual void appendMobile(const WorldObject& obj, const DrawItem& base, std::vector<DrawItem>& out) = 0;
 };
 
 // Top-left of an item art sprite of the given size for an object at
@@ -177,8 +200,9 @@ public:
     // it is not there (or the block is not loaded).
     bool removeObject(std::uint32_t serial, int x, int y);
 
-    // Builds the back-to-front draw list for the view. `out` is cleared.
-    void buildDrawList(const ViewParams& view, std::vector<DrawItem>& out) const;
+    // Builds the back-to-front draw list for the view. `out` is cleared. Mobiles are drawn
+    // only through a mobile source; without one they are skipped.
+    void buildDrawList(const ViewParams& view, std::vector<DrawItem>& out, IMobileDrawSource* mobiles = nullptr) const;
 
     const Cell* cellAt(int x, int y) const;
     bool isLoaded(int blockX, int blockY) const { return findBlock(blockX, blockY) != nullptr; }
