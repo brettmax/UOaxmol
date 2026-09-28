@@ -10,7 +10,7 @@
 #include <cstdlib>
 
 using namespace ax;
-using uo::game::Direction;
+using uo::world::Direction;
 using KeyCode = KeyboardEvent::KeyCode;
 
 namespace
@@ -19,8 +19,15 @@ constexpr const char* kFont = "fonts/arial.ttf";
 constexpr float kWalkDelay  = 0.4f;  // on-foot walking pace, seconds per tile
 constexpr float kRunDelay   = 0.2f;
 
-Color32 notorietyColor(std::uint8_t n)
+// The map the world is on; the world reports -1 until 0x1B / 0xBF 0x08 set it.
+int currentMap()
 {
+    return std::max(0, GameClient::instance().world().mapIndex);
+}
+
+Color32 notorietyColor(uo::world::Notoriety notoriety)
+{
+    const auto n = static_cast<std::uint8_t>(notoriety);
     switch (n)
     {
     case 1: return Color32(80, 140, 255, 255);   // innocent
@@ -87,13 +94,13 @@ void WorldScene::onEnter()
     auto& gc    = GameClient::instance();
     auto& world = gc.world();
 
-    world.onEntityUpdated = [this](const uo::game::Entity& e) { syncEntity(e); };
-    world.onEntityRemoved = [this](std::uint32_t s) { removeEntity(s); };
-    world.onMessage       = [this](const uo::game::JournalEntry&) { refreshJournal(); };
-    gc.disconnectedHandler = [this] { _director->replaceScene(utils::createInstance<LoginScene>()); };
+    gc.entityUpdatedHandler = [this](const uo::world::Entity& e) { syncEntity(e); };
+    gc.entityRemovedHandler = [this](uo::world::Serial s) { removeEntity(s); };
+    gc.messageHandler       = [this](const uo::world::Message&) { refreshJournal(); };
+    gc.disconnectedHandler  = [this] { _director->replaceScene(utils::createInstance<LoginScene>()); };
 
-    for (const auto& [serial, e] : world.entities())
-        syncEntity(e);
+    world.forEachMobile([this](uo::world::Mobile& m) { syncEntity(m); });
+    world.forEachItem([this](uo::world::Item& i) { syncEntity(i); });
     refreshJournal();
     streamBlocks();
     centerCamera();
@@ -118,11 +125,11 @@ void WorldScene::onEnter()
 
 void WorldScene::onExit()
 {
-    auto& gc               = GameClient::instance();
-    gc.world().onEntityUpdated = nullptr;
-    gc.world().onEntityRemoved = nullptr;
-    gc.world().onMessage       = nullptr;
-    gc.disconnectedHandler     = nullptr;
+    auto& gc                = GameClient::instance();
+    gc.entityUpdatedHandler = nullptr;
+    gc.entityRemovedHandler = nullptr;
+    gc.messageHandler       = nullptr;
+    gc.disconnectedHandler  = nullptr;
     Scene::onExit();
 }
 
@@ -158,7 +165,7 @@ void WorldScene::streamBlocks()
 {
     auto& gc      = GameClient::instance();
     const auto* p = gc.world().player();
-    const auto* map = gc.install().map(gc.world().mapIndex());
+    const auto* map = gc.install().map(currentMap());
     if (!p || !map)
         return;
 
@@ -191,7 +198,7 @@ void WorldScene::streamBlocks()
 void WorldScene::buildBlock(BlockKey key)
 {
     auto& gc        = GameClient::instance();
-    const auto* map = gc.install().map(gc.world().mapIndex());
+    const auto* map = gc.install().map(currentMap());
     auto& textures  = gc.textures();
     auto& nodes     = _blocks[key];
 
@@ -231,10 +238,19 @@ void WorldScene::buildBlock(BlockKey key)
     }
 }
 
-void WorldScene::syncEntity(const uo::game::Entity& e)
+void WorldScene::syncEntity(const uo::world::Entity& e)
 {
     auto& gc = GameClient::instance();
     Node* node = nullptr;
+
+    // Only what stands in the world is drawn; equipment and container contents are not.
+    const auto* item = e.isItem() ? static_cast<const uo::world::Item*>(&e) : nullptr;
+    if (item && !item->onGround())
+    {
+        removeEntity(e.serial);
+        return;
+    }
+    const auto* mobile = e.isMobile() ? static_cast<const uo::world::Mobile*>(&e) : nullptr;
 
     if (auto it = _entities.find(e.serial); it != _entities.end())
     {
@@ -247,7 +263,7 @@ void WorldScene::syncEntity(const uo::game::Entity& e)
             // Placeholder until mobile animations are ported: a notoriety-coloured marker and name.
             node     = Node::create();
             auto dot = DrawNode::create();
-            dot->drawSolidCircle(Vec2(0, 30), 10, 0, 20, Color(notorietyColor(e.notoriety)));
+            dot->drawSolidCircle(Vec2(0, 30), 10, 0, 20, Color(notorietyColor(mobile->notoriety)));
             dot->setName("marker");
             node->addChild(dot);
             auto name = Label::createWithTTF(e.name, kFont, 13);
@@ -269,12 +285,12 @@ void WorldScene::syncEntity(const uo::game::Entity& e)
         _entities[e.serial] = node;
     }
 
-    if (e.isMobile())
+    if (mobile)
     {
         if (auto* name = dynamic_cast<Label*>(node->getChildByName("name")))
         {
             name->setString(e.name);
-            name->setTextColor(notorietyColor(e.notoriety));
+            name->setTextColor(notorietyColor(mobile->notoriety));
         }
         node->setPosition(tileToWorld(e.x, e.y, e.z));
     }
@@ -319,20 +335,20 @@ void WorldScene::handleWalking(float dt)
     };
     Direction dir = table[dy + 1][dx + 1];
 
+    // The walker (uo::movement) predicts the step and sends 0x02.
     auto& gc = GameClient::instance();
-    if (auto packet = gc.world().requestWalk(dir, _running))
-    {
-        gc.session().send(std::move(*packet));
+    if (gc.walkHandler && gc.walkHandler(dir, _running))
         _walkCooldown = _running ? kRunDelay : kWalkDelay;
-    }
 }
 
-std::string WorldScene::journalText(const uo::game::JournalEntry& j) const
+std::string WorldScene::journalText(const uo::world::Message& j) const
 {
+    // Cliloc messages arrive translated when GameClient's resolver had the table; otherwise
+    // they carry the number and arguments.
     std::string text = j.text;
-    if (j.clilocNumber)
+    if (text.empty() && j.cliloc)
     {
-        text = GameClient::instance().install().cliloc().format(static_cast<std::int32_t>(j.clilocNumber), j.clilocArgs);
+        text = GameClient::instance().install().cliloc().format(static_cast<std::int32_t>(j.cliloc), j.clilocArgs);
         if (!j.affix.empty())
             text = j.affixPrepend ? j.affix + text : text + j.affix;
     }

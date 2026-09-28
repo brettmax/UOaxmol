@@ -7,6 +7,7 @@
 #include <cstring>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace uo::io
 {
@@ -48,6 +49,7 @@ public:
     std::uint16_t readU16BE() { return static_cast<std::uint16_t>(readBE(2)); }
     std::uint32_t readU32BE() { return static_cast<std::uint32_t>(readBE(4)); }
     std::int16_t readI16BE() { return static_cast<std::int16_t>(readU16BE()); }
+    std::uint64_t readU64BE() { return readBE(8); }
     std::int32_t readI32BE() { return static_cast<std::int32_t>(readU32BE()); }
 
     bool read(std::span<std::uint8_t> out)
@@ -64,8 +66,23 @@ public:
     }
 
     // Fixed-width, NUL-padded ASCII field (account names, shard names). A width of zero means
-    // "until NUL or end of buffer".
-    std::string readASCII(std::size_t width = 0)
+    // "until NUL or end of buffer". With cp1252, bytes above 0x7F are decoded as Windows-1252
+    // (as ClassicUO does for names and speech) and returned as UTF-8; otherwise they are copied raw.
+    std::string readASCII(std::size_t width = 0, bool cp1252 = false)
+    {
+        return cp1252 ? cp1252ToUtf8(readASCIIRaw(width)) : readASCIIRaw(width);
+    }
+
+    // UTF-16BE string of `chars` code units, or NUL-terminated when chars == 0. Returned as UTF-8.
+    std::string readUnicodeBE(std::size_t chars = 0);
+    // UTF-16LE variant, used by the cliloc-argument packets.
+    std::string readUnicodeLE(std::size_t chars = 0);
+
+    // Windows-1252 bytes to UTF-8.
+    static std::string cp1252ToUtf8(std::string_view bytes);
+
+private:
+    std::string readASCIIRaw(std::size_t width)
     {
         std::string out;
         std::size_t end = width ? _pos + width : _data.size();
@@ -92,12 +109,6 @@ public:
         return out;
     }
 
-    // UTF-16BE string of `chars` code units, or NUL-terminated when chars == 0. Returned as UTF-8.
-    std::string readUnicodeBE(std::size_t chars = 0);
-    // UTF-16LE variant, used by the cliloc-argument packets.
-    std::string readUnicodeLE(std::size_t chars = 0);
-
-private:
     template <typename T>
     T fail(std::size_t n)
     {

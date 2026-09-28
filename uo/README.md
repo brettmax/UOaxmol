@@ -61,7 +61,7 @@ shard with synthetic data files, logs in, enters the world and saves a screensho
 | `Network/Huffman` | `core/net/Huffman` | done (+ encoder for tests) |
 | `Network/NetClient`, `Scenes/LoginScene` flow | `core/net/Session`, `PacketFramer` | done (unencrypted, as ModernUO accepts) |
 | `Network/OutgoingPackets` | `core/net/OutgoingPackets` | login, walk, speech, clicks |
-| `Network/PacketHandlers`, `Game/World` | `core/game/World` | login, mobiles, items, walk, speech, status |
+| `Network/PacketHandlers`, `Game/World`, `Game/GameObjects` | `core/world/` (`uo::world`) | entities, containers, equipment, corpses, speech, effects, targeting, trade, shops, books, party, skills; gumps and walking plug in through hooks |
 | `Assets/AnimationsLoader`, `AnimDataLoader` | — | to do |
 | `Assets/FontsLoader`, unifont | — | to do |
 | `Assets/TexmapsLoader`, `LightsLoader`, `MultiLoader`, `SoundsLoader` | — | to do |

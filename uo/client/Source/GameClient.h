@@ -6,8 +6,9 @@
 #include "render/TextureCache.h"
 
 #include "uo/assets/Installation.h"
-#include "uo/game/World.h"
 #include "uo/net/Session.h"
+#include "uo/world/PacketHandlers.h"
+#include "uo/world/World.h"
 
 #include <functional>
 #include <memory>
@@ -16,7 +17,10 @@
 // Everything that outlives a scene: settings, the loaded UO data, the connection and the
 // world. Scenes register for the callbacks they care about and drop them when they exit.
 // The Axmol counterpart of ClassicUO's GameController + UOFileManager + NetClient.
-class GameClient final : public uo::net::SessionListener
+class GameClient final : public uo::net::SessionListener,
+                         public uo::world::WorldListener,
+                         public uo::world::ServerRequests,
+                         public uo::world::ClilocResolver
 {
 public:
     static GameClient& instance();
@@ -31,7 +35,9 @@ public:
     const uo::assets::Installation& install() const { return _install; }
     UOTextures& textures() { return *_textures; }
     uo::net::Session& session() { return _session; }
-    uo::game::World& world() { return *_world; }
+    uo::world::World& world() { return *_world; }
+    // Packet dispatch into world(). Other modules (gumps, movement) register hooks here.
+    uo::world::PacketHandlers& packetHandlers() { return _handlers; }
 
     void connect();
     // Drops the connection and GPU resources while the renderer still exists (app exit).
@@ -46,6 +52,13 @@ public:
     std::function<void(const std::vector<uo::net::CharacterSlot>&)> charactersHandler;
     std::function<void()> enteredWorldHandler;
     std::function<void()> disconnectedHandler;
+    std::function<void(const uo::world::Entity&)> entityUpdatedHandler;
+    std::function<void(uo::world::Serial)> entityRemovedHandler;
+    std::function<void(const uo::world::Message&)> messageHandler;
+    // Movement: sends a walk request for the player (uo::movement::Walker); false when refused.
+    std::function<bool(uo::world::Direction, bool run)> walkHandler;
+    // Movement: the server moved the player (0x20 / 0xF3); the walker must resync.
+    std::function<void(uo::world::Player&)> playerTeleportedHandler;
 
     // SessionListener
     void onLoginError(std::string message) override;
@@ -53,6 +66,24 @@ public:
     void onCharacterList(const std::vector<uo::net::CharacterSlot>& characters) override;
     void onGamePacket(std::span<const std::uint8_t> packet) override;
     void onDisconnected() override;
+
+    // WorldListener
+    void onEnterWorld(uo::world::Player& player) override;
+    void onEntityCreated(uo::world::Entity& e) override;
+    void onEntityUpdated(uo::world::Entity& e) override;
+    void onEntityRemoved(uo::world::Serial serial, uo::world::EntityKind kind) override;
+    void onNameChanged(uo::world::Entity& e) override;
+    void onPlayerTeleported(uo::world::Player& player) override;
+    void onMessage(const uo::world::Message& msg) override;
+
+    // ServerRequests (0xBD is answered by the session)
+    void requestMobileStatus(uo::world::Serial serial) override;
+    void singleClick(uo::world::Serial serial) override;
+    void doubleClick(uo::world::Serial serial) override;
+
+    // ClilocResolver, over the installation's cliloc table
+    std::string get(std::uint32_t cliloc) override;
+    std::optional<std::string> translate(std::uint32_t cliloc, std::string_view args, bool capitalize) override;
 
 private:
     GameClient();
@@ -65,6 +96,9 @@ private:
 
     YasioTransport _transport;
     uo::net::Session _session;
-    std::unique_ptr<uo::game::World> _world;
+    void resetWorld();
+
+    std::unique_ptr<uo::world::World> _world;
+    uo::world::PacketHandlers _handlers;
     float _pingTimer = 0;
 };
