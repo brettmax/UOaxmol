@@ -494,23 +494,58 @@ void SoundLoader::loadMusic()
     _music.clear();
     _musicFiles.clear();
 
-    fs::path musicDir = findDir(_options.uoPath, "Music");
-    fs::path digital  = musicDir.empty() ? fs::path{} : findDir(musicDir, "Digital");
-
     // ClientVersion.CV_4011C: the Music/ -> Music/Digital/ switchover.
     const bool useDigital = _options.version >= makeVersion(4, 0, 11, 'c');
-    fs::path configDir    = useDigital ? digital : musicDir;
 
-    // Digital tracks shadow same-named ones elsewhere in Music/, matching ClassicUO's lookup,
-    // which builds Music/Digital/<name> whenever that folder exists.
-    if (!digital.empty())
+    struct MusicRoot
     {
-        indexMusicFiles(digital);
+        fs::path music;
+        fs::path digital;
+    };
+
+    auto root = [](const fs::path& base) {
+        MusicRoot r;
+        r.music   = base.empty() ? fs::path{} : findDir(base, "Music");
+        r.digital = r.music.empty() ? fs::path{} : findDir(r.music, "Digital");
+        return r;
+    };
+
+    // uoconvert's tree comes first: it mirrors Music/ and holds the .ogg renders of MIDI-only
+    // installs, which it may not write into the UO folder. The UO folder is the fallback.
+    const MusicRoot converted = root(_options.assetsPath);
+    const MusicRoot install   = root(_options.uoPath);
+
+    for (const MusicRoot* r : {&converted, &install})
+    {
+        // Digital tracks shadow same-named ones elsewhere in Music/, matching ClassicUO's lookup,
+        // which builds Music/Digital/<name> whenever that folder exists.
+        if (!r->digital.empty())
+        {
+            indexMusicFiles(r->digital);
+        }
+
+        if (!r->music.empty())
+        {
+            indexMusicFiles(r->music);
+        }
     }
 
-    if (!musicDir.empty())
+    // Config.txt from the install, else the converter's copy of it.
+    fs::path config;
+
+    for (const MusicRoot* r : {&install, &converted})
     {
-        indexMusicFiles(musicDir);
+        const fs::path& dir = useDigital ? r->digital : r->music;
+
+        if (!dir.empty())
+        {
+            config = findFile(dir, "Config.txt");
+        }
+
+        if (!config.empty())
+        {
+            break;
+        }
     }
 
     auto add = [&](int index, std::string name, bool loop) {
@@ -525,8 +560,6 @@ void SoundLoader::loadMusic()
         track.name    = std::move(name);
         _music[index] = std::move(track);
     };
-
-    fs::path config = configDir.empty() ? fs::path{} : findFile(configDir, "Config.txt");
 
     if (!config.empty())
     {

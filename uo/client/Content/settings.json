@@ -1,6 +1,7 @@
 {
     "_comment": "Point uoDirectory at a Second Age (or any classic) Ultima Online data folder.",
     "uoDirectory": "",
+    "assetsDirectory": "",
     "clientVersion": "7.0.15.1",
     "host": "127.0.0.1",
     "port": 2593,

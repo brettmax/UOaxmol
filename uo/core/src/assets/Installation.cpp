@@ -115,8 +115,9 @@ bool Installation::load(const Options& options)
 
     // Sounds are survivable too: the client plays silence rather than refusing to start.
     sound::SoundLoader::Options soundOptions;
-    soundOptions.uoPath  = options.directory;
-    soundOptions.version = options.version;
+    soundOptions.uoPath     = options.directory;
+    soundOptions.assetsPath = options.assetsDirectory;
+    soundOptions.version    = options.version;
     _soundsLoaded        = _sounds.load(soundOptions);
 
     _maps.clear();

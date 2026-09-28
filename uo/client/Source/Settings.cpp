@@ -40,6 +40,7 @@ Settings Settings::load()
             out = doc[key].GetString();
     };
     str("uoDirectory", s.uoDirectory);
+    str("assetsDirectory", s.assetsDirectory);
     str("host", s.host);
     str("account", s.account);
     str("password", s.password);
@@ -66,6 +67,7 @@ void Settings::save() const
     doc.SetObject();
     auto& a = doc.GetAllocator();
     doc.AddMember("uoDirectory", rapidjson::Value(uoDirectory.c_str(), a), a);
+    doc.AddMember("assetsDirectory", rapidjson::Value(assetsDirectory.c_str(), a), a);
     doc.AddMember("clientVersion", rapidjson::Value(uo::clientVersionToString(clientVersion).c_str(), a), a);
     doc.AddMember("host", rapidjson::Value(host.c_str(), a), a);
     doc.AddMember("port", port, a);

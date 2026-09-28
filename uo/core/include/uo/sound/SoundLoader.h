@@ -58,6 +58,10 @@ public:
     {
         std::filesystem::path uoPath;  // the UO install directory
 
+        // uoconvert's output root (its --out), if any. Music is looked up in its Music/ first, so
+        // MIDI-only installs play the .ogg renders the converter writes there.
+        std::filesystem::path assetsPath;
+
         // Clients 4.0.11c and later read Music/Digital/Config.txt; older ones Music/Config.txt.
         ClientVersion version = cv::CV_200;
 

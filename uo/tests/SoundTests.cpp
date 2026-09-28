@@ -362,3 +362,53 @@ TEST_CASE("T2A clients read Music/Config.txt, not the Digital one")
     auto* t9 = loader.music(9);
     CHECK((t9 && t9->loop && t9->file.filename() == "britain1.ogg"));
 }
+
+TEST_CASE("MIDI-only installs play the converter's .ogg renders")
+{
+    // A UOR-style disc: upper-case MUSIC/, a Config.txt and .MID files only.
+    TempDir uo("uo_sound_music_uor");
+    writeText(uo.path / "MUSIC" / "Config.txt", "9 britain1,loop\n12 jhelom\n");
+    writeFile(uo.path / "MUSIC" / "BRITAIN1.MID", {0});
+    writeFile(uo.path / "MUSIC" / "JHELOM.MID", {0});
+
+    // uoconvert's --out tree mirrors Music/ with the renders beside where the .mid was.
+    TempDir out("uo_sound_music_uor_assets");
+    writeFile(out.path / "MUSIC" / "BRITAIN1.ogg", {0});
+
+    SoundLoader::Options o = opts(uo.path);
+    o.assetsPath           = out.path;
+
+    SoundLoader loader;
+    loader.load(o);
+    CHECK(loader.musicTable().size() == 2);
+
+    auto* t9 = loader.music(9);
+    CHECK((t9 && t9->loop && t9->file == out.path / "MUSIC" / "BRITAIN1.ogg"));
+
+    auto* t12 = loader.music(12);
+    CHECK((t12 && t12->file.empty()));  // not rendered yet
+
+    // Without the converted tree nothing is playable.
+    SoundLoader bare;
+    bare.load(opts(uo.path));
+    CHECK((bare.music(9) && bare.music(9)->file.empty()));
+}
+
+TEST_CASE("an install's own mp3 still plays and Config.txt falls back to the converted copy")
+{
+    TempDir uo("uo_sound_music_mixed");
+    writeFile(uo.path / "Music" / "britain1.mp3", {0});
+
+    TempDir out("uo_sound_music_mixed_assets");
+    writeText(out.path / "Music" / "Config.txt", "9 britain1,loop\n");
+
+    SoundLoader::Options o = opts(uo.path);
+    o.assetsPath           = out.path;
+
+    SoundLoader loader;
+    loader.load(o);
+    CHECK(loader.musicTable().size() == 1);
+
+    auto* t9 = loader.music(9);
+    CHECK((t9 && t9->file == uo.path / "Music" / "britain1.mp3"));
+}
