@@ -3,7 +3,7 @@
 
 #include "axmol/axmol.h"
 
-#include "uo/game/World.h"
+#include "uo/world/World.h"
 
 #include <cstdint>
 #include <map>
@@ -12,7 +12,7 @@
 #include <vector>
 
 // The game view: isometric terrain and statics streamed in 8x8 map blocks around the player,
-// world items and mobiles mirrored from uo::game::World, keyboard walking and a journal.
+// world items and mobiles mirrored from uo::world::World, keyboard walking and a journal.
 // The Axmol version of ClassicUO's GameScene; mobiles are placeholders until the animation
 // port lands.
 class WorldScene : public ax::Scene
@@ -37,12 +37,12 @@ private:
 
     void streamBlocks();
     void buildBlock(BlockKey key);
-    void syncEntity(const uo::game::Entity& e);
+    void syncEntity(const uo::world::Entity& e);
     void removeEntity(std::uint32_t serial);
     void centerCamera();
     void handleWalking(float dt);
     void refreshJournal();
-    std::string journalText(const uo::game::JournalEntry& j) const;
+    std::string journalText(const uo::world::Message& m) const;
 
     void onKeyPressed(ax::KeyboardEvent* ev);
     void onKeyReleased(ax::KeyboardEvent* ev);
