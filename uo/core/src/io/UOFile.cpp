@@ -192,7 +192,7 @@ bool UopFile::load()
 
             FileIndex e;
             e.offset       = offset;
-            e.length       = flag == 1 ? compressed : decompressed;
+            e.length       = compressed;  // bytes on disk; `decompressed` is the inflated size
             e.decompressed = decompressed;
             e.compression  = static_cast<CompressionType>(flag);
 

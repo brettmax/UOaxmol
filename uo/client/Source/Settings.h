@@ -19,6 +19,8 @@ struct Settings
     std::string password;
     bool ignoreRelayAddress = true;
     int map                 = 0;
+    // ClassicUO's AutoLogin: connect on start and play the first character.
+    bool autoLogin = false;
 
     static Settings load();
     void save() const;

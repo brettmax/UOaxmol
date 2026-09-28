@@ -77,6 +77,10 @@ ax_setup_app_config(${APP_NAME})
 # Add any libraries you need to link to the project after this point
 target_link_libraries(${APP_NAME} uocore)
 
+# Mouse and keyboard movement and targeting (uo/client/input).
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/input ${CMAKE_BINARY_DIR}/uo_client_input)
+target_link_libraries(${APP_NAME} uo_client_input)
+
 # Default Platform-specific setup
 include(AXGamePlatformSetup)
 

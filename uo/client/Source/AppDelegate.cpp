@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "AppDelegate.h"
+#include "GameClient.h"
 #include "scenes/LoginScene.h"
 
 #define USE_VR_RENDERER  0
@@ -140,4 +141,7 @@ void AppDelegate::applicationWillEnterForeground()
 #endif
 }
 
-void AppDelegate::applicationWillQuit() {}
+void AppDelegate::applicationWillQuit()
+{
+    GameClient::instance().shutdown();
+}

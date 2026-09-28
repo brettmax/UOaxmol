@@ -46,6 +46,8 @@ Settings Settings::load()
         s.port = static_cast<std::uint16_t>(doc["port"].GetInt());
     if (doc.HasMember("ignoreRelayAddress") && doc["ignoreRelayAddress"].IsBool())
         s.ignoreRelayAddress = doc["ignoreRelayAddress"].GetBool();
+    if (doc.HasMember("autoLogin") && doc["autoLogin"].IsBool())
+        s.autoLogin = doc["autoLogin"].GetBool();
     if (doc.HasMember("map") && doc["map"].IsInt())
         s.map = doc["map"].GetInt();
     return s;
@@ -64,6 +66,7 @@ void Settings::save() const
     // The password is deliberately not written back to disk.
     doc.AddMember("ignoreRelayAddress", ignoreRelayAddress, a);
     doc.AddMember("map", map, a);
+    doc.AddMember("autoLogin", autoLogin, a);
 
     rapidjson::StringBuffer buf;
     rapidjson::PrettyWriter<rapidjson::StringBuffer> w(buf);

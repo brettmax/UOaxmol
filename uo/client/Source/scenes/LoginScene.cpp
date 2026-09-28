@@ -115,6 +115,12 @@ void LoginScene::onEnter()
             setStatus("This account has no characters. Character creation is not ported yet.", true);
             return;
         }
+        if (GameClient::instance().settings().autoLogin)
+        {
+            GameClient::instance().session().selectCharacter(chars[0].slot);
+            setStatus("Entering Britannia...");
+            return;
+        }
         std::vector<std::pair<std::string, std::function<void()>>> items;
         for (const auto& c : chars)
         {
@@ -132,6 +138,12 @@ void LoginScene::onEnter()
         _director->replaceScene(TransitionFade::create(0.4f, utils::createInstance<WorldScene>()));
     };
     gc.disconnectedHandler = [this] { setStatus("Disconnected.", true); };
+
+    if (gc.settings().autoLogin && !gc.autoLoginDone && !gc.settings().account.empty())
+    {
+        gc.autoLoginDone = true;  // once per launch, not after every disconnect
+        scheduleOnce([this](float) { login(); }, 0.1f, "autologin");
+    }
 }
 
 void LoginScene::onExit()
