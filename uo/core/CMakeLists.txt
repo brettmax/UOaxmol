@@ -23,3 +23,5 @@ else()
   find_package(ZLIB REQUIRED)
   target_link_libraries(uocore PUBLIC ZLIB::ZLIB)
 endif()
+
+add_subdirectory(anim)

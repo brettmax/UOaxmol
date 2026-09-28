@@ -1,5 +1,5 @@
 file(GLOB UOTEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 add_executable(uocore-tests ${UOTEST_SOURCES})
-target_link_libraries(uocore-tests PRIVATE uocore)
+target_link_libraries(uocore-tests PRIVATE uocore uocore_anim)
 target_include_directories(uocore-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../3rdparty/doctest)
 add_test(NAME uocore-tests COMMAND uocore-tests)
