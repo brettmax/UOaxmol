@@ -326,7 +326,13 @@ int FontRenderer::heightAscii(uint8_t font, std::u16string_view str, int width, 
     if (width == 0)
         width = widthAscii(font, str);
 
-    return layoutHeight(layoutAscii(font, str, align, flags, width));
+    const TextLayout lines = layoutAscii(font, str, align, flags, width);
+
+    // HTML lines are a fixed 18 pixels.
+    if (_useHtml)
+        return static_cast<int>(lines.size()) * 18;
+
+    return layoutHeight(lines);
 }
 
 std::u16string FontRenderer::textByWidthAscii(uint8_t font, std::u16string_view str, int width, bool isCropped) const
@@ -336,6 +342,9 @@ std::u16string FontRenderer::textByWidthAscii(uint8_t font, std::u16string_view 
 
     std::u16string out;
     out.reserve(str.size() + 3);
+
+    if (_useHtml)
+        htmlTextByWidthPrefix(font, str, width, isCropped, out, false);
 
     if (isCropped)
         width -= _ascii[font][u'.' - kNoPrintChars].width * 3;
@@ -577,10 +586,17 @@ TextBitmap FontRenderer::generateAscii(uint8_t font, std::u16string_view str, ui
                 {
                     totalHeight += heightAscii(font, newStr, width, align, flags);
 
-                    if (str.size() > newStr.size())
-                        newStr += textByWidthAscii(font, str.substr(newStr.size()), width, cropped);
-                    else
+                    if (str.size() <= newStr.size())
                         break;
+
+                    // The original loops forever when nothing more fits and the text has no
+                    // height (all tags under HTML); stopping changes no result that terminates.
+                    const std::u16string piece = textByWidthAscii(font, str.substr(newStr.size()), width, cropped);
+
+                    if (piece.empty())
+                        break;
+
+                    newStr += piece;
                 }
             }
 
@@ -764,6 +780,9 @@ std::u16string FontRenderer::textByWidthUnicode(uint8_t font, std::u16string_vie
     std::u16string out;
     out.reserve(str.size() + 3);
 
+    if (_useHtml)
+        htmlTextByWidthPrefix(font, str, width, isCropped, out, true);
+
     if (isCropped)
     {
         const UnicodeGlyph& dot = unicodeGlyph(font, u'.');
@@ -804,10 +823,25 @@ std::u16string FontRenderer::textByWidthUnicode(uint8_t font, std::u16string_vie
 TextLayout FontRenderer::layoutUnicode(uint8_t font, std::u16string_view str, TextAlign align, uint16_t flags,
                                        int width, bool countReturns, bool countSpaces) const
 {
+    std::vector<std::string> urls;
+    return layoutUnicodeInfo(font, str, align, flags, width, countReturns, countSpaces, &urls);
+}
+
+TextLayout FontRenderer::layoutUnicodeInfo(uint8_t font, std::u16string_view str, TextAlign align, uint16_t flags,
+                                           int width, bool countReturns, bool countSpaces,
+                                           std::vector<std::string>* urls) const
+{
     TextLayout lines;
+    resetHtmlStatus();
 
     if (!unicodeFontExists(font))
         return lines;
+
+    if (_useHtml)
+    {
+        std::vector<std::string> local;
+        return layoutHtml(font, str, align, flags, width, urls ? *urls : local);
+    }
 
     newLine(lines, align);
 
@@ -822,7 +856,7 @@ TextLayout FontRenderer::layoutUnicode(uint8_t font, std::u16string_view str, Te
     const TextAlign currentAlign = align;
     const uint16_t currentFlags  = flags;
     const uint8_t currentFont    = font;
-    // Per-character colors only change under HTML, which this renderer does not parse.
+    // Per-character colors only change under HTML, which layoutHtml handles.
     const uint32_t currentCharColor = 0xFFFFFFFF;
     const int len = static_cast<int>(str.size());
 
@@ -1029,10 +1063,17 @@ TextBitmap FontRenderer::generateUnicode(uint8_t font, std::u16string_view str, 
 
                     // The original passes the already-consumed prefix here, which repeats
                     // the start of the text; the ASCII path takes the remainder, as here.
-                    if (str.size() > newStr.size())
-                        newStr += textByWidthUnicode(font, str.substr(newStr.size()), width, cropped);
-                    else
+                    if (str.size() <= newStr.size())
                         break;
+
+                    // The original loops forever when nothing more fits and the text has no
+                    // height (all tags under HTML); stopping changes no result that terminates.
+                    const std::u16string piece = textByWidthUnicode(font, str.substr(newStr.size()), width, cropped);
+
+                    if (piece.empty())
+                        break;
+
+                    newStr += piece;
                 }
             }
 
@@ -1059,10 +1100,23 @@ TextBitmap FontRenderer::pixelsUnicode(uint8_t font, std::u16string_view str, ui
             return {};
     }
 
-    const TextLayout lines = layoutUnicode(font, str, align, flags, width);
+    std::vector<std::string> urls;
+    TextLayout lines = layoutUnicodeInfo(font, str, align, flags, width, false, false, &urls);
 
     if (lines.empty())
         return {};
+
+    // Side margins from <body> narrow the text and lay it out again.
+    if (_useHtml && (_html.margins.x != 0 || _html.margins.width != 0))
+    {
+        const int newWidth = std::max(width - (_html.margins.x + _html.margins.width), 10);
+
+        urls.clear();
+        lines = layoutUnicodeInfo(font, str, align, flags, newWidth, false, false, &urls);
+
+        if (lines.empty())
+            return {};
+    }
 
     if (oldWidth == 0 && _recalculateWidthByInfo)
     {
@@ -1078,7 +1132,7 @@ TextBitmap FontRenderer::pixelsUnicode(uint8_t font, std::u16string_view str, ui
     if (height == 0)
         return {};
 
-    height += 4;
+    height += _html.margins.y + _html.margins.height + 4;
 
     TextBitmap out;
     out.width  = width;
@@ -1089,17 +1143,23 @@ TextBitmap FontRenderer::pixelsUnicode(uint8_t font, std::u16string_view str, ui
     const uint32_t datacolor =
         hue == 0xFFFF ? 0xFEFFFFFF : rgbaToArgb((_hues->polygoneColor(cell, hue) << 8) | 0xFF);
 
-    const bool isItalic      = (flags & FontStyleItalic) != 0;
-    const bool isSolid       = (flags & FontStyleSolid) != 0;
-    const bool isBlackBorder = (flags & FontStyleBlackBorder) != 0;
-    const bool isUnderline   = (flags & FontStyleUnderline) != 0;
+    // Under HTML each character sets these, and they carry over to the next one.
+    bool isItalic      = (flags & FontStyleItalic) != 0;
+    bool isSolid       = (flags & FontStyleSolid) != 0;
+    bool isBlackBorder = (flags & FontStyleBlackBorder) != 0;
+    bool isUnderline   = (flags & FontStyleUnderline) != 0;
     constexpr uint32_t blackColor = 0xFF010101;
-    int lineOffsY = 0;
+    int lineOffsY = _html.margins.y;
+    bool isLink     = false;
+    uint16_t oldLink = 0;
+    int linkStartX  = 0;
+    int linkStartY  = 0;
 
     for (const auto& line : lines)
     {
         out.lineCount++;
-        int w = 0;
+        // The original starts lines at the top margin, not the left one.
+        int w = _html.margins.y;
 
         switch (line.align)
         {
@@ -1119,15 +1179,50 @@ TextBitmap FontRenderer::pixelsUnicode(uint8_t font, std::u16string_view str, ui
             break;
         }
 
-        bool stopLine = false;
+        bool stopLine      = false;
+        const int dataSize = static_cast<int>(line.data.size());
 
-        for (const auto& dataPtr : line.data)
+        for (int i = 0; i < dataSize; i++)
         {
             if (stopLine)
                 break;
 
-            const char16_t si     = dataPtr.item;
-            const UnicodeGlyph& g = unicodeGlyph(dataPtr.font, si);
+            const GlyphRun& dataPtr = line.data[static_cast<size_t>(i)];
+            const char16_t si       = dataPtr.item;
+            const UnicodeGlyph& g   = unicodeGlyph(dataPtr.font, si);
+
+            if (!isLink)
+            {
+                oldLink = dataPtr.linkId;
+
+                if (oldLink != 0)
+                {
+                    isLink     = true;
+                    linkStartX = w;
+                    linkStartY = lineOffsY + 3;
+                }
+            }
+            else if (dataPtr.linkId == 0 || i + 1 == dataSize)
+            {
+                isLink         = false;
+                int linkHeight = std::max(lineOffsY - linkStartY, 14);
+                int ofsX       = 0;
+
+                if (si == u' ')
+                    ofsX = kUnicodeSpaceWidth;
+                else if (g.data)
+                    ofsX = g.offsetX;
+
+                WebLinkRect link;
+                if (oldLink >= 1 && oldLink <= urls.size())
+                    link.url = urls[oldLink - 1];
+                link.x      = linkStartX;
+                link.y      = linkStartY;
+                link.width  = w - ofsX;
+                link.height = linkHeight;
+                out.links.push_back(std::move(link));
+                oldLink = 0;
+            }
 
             if (!g.data && si != u' ')
                 continue;
@@ -1149,12 +1244,26 @@ TextBitmap FontRenderer::pixelsUnicode(uint8_t font, std::u16string_view str, ui
                 dh    = g.height;
             }
 
-            const int tmpW           = w;
-            const uint32_t charcolor = datacolor;
-            const bool isBlackPixel  = isBlackColor(charcolor);
+            const int tmpW     = w;
+            uint32_t charcolor = datacolor;
+            bool isBlackPixel  = isBlackColor(charcolor);
 
             if (si != u' ')
             {
+                if (_useHtml)
+                {
+                    isItalic      = (dataPtr.flags & FontStyleItalic) != 0;
+                    isSolid       = (dataPtr.flags & FontStyleSolid) != 0;
+                    isBlackBorder = (dataPtr.flags & FontStyleBlackBorder) != 0;
+                    isUnderline   = (dataPtr.flags & FontStyleUnderline) != 0;
+
+                    if (dataPtr.color != 0xFFFFFFFF)
+                    {
+                        charcolor    = rgbaToArgb(dataPtr.color);
+                        isBlackPixel = isBlackColor(charcolor);
+                    }
+                }
+
                 const int scanlineCount = ((dw - 1) >> 3) + 1;
                 int scanLineOff         = 0;
 
@@ -1356,6 +1465,14 @@ TextBitmap FontRenderer::pixelsUnicode(uint8_t font, std::u16string_view str, ui
             else
             {
                 w += kUnicodeSpaceWidth;
+
+                if (_useHtml)
+                {
+                    isUnderline = (dataPtr.flags & FontStyleUnderline) != 0;
+
+                    if (dataPtr.color != 0xFFFFFFFF)
+                        charcolor = rgbaToArgb(dataPtr.color);
+                }
             }
 
             if (isUnderline)
@@ -1390,6 +1507,18 @@ TextBitmap FontRenderer::pixelsUnicode(uint8_t font, std::u16string_view str, ui
         }
 
         lineOffsY += line.maxHeight;
+    }
+
+    if (_useHtml && _html.backgroundColored && _html.backgroundColor != 0)
+    {
+        _html.backgroundColor |= 0xFF;
+        const uint32_t background = rgbaToArgb(_html.backgroundColor);
+
+        for (uint32_t& p : out.pixels)
+            if (p == 0)
+                p = background;
+
+        out.htmlBackgroundColor = background;
     }
 
     return out;

@@ -11,6 +11,7 @@
 #include "uo/text/Utf.h"
 #include "uo/text/WorldClilocs.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <sstream>
 #include <string>
@@ -344,6 +345,119 @@ const char* const kExpected[] = {
     "r 0059006F00750020007300650065003A00200020007700690074006800200071",
 };
 
+
+struct HtmlCase
+{
+    char kind;  // 'H' unicode, 'Q' ASCII height and text-by-width
+    int font, flags, width, align, hue, cell, height;
+    std::uint32_t startColor;
+    bool background;
+    const char* text;
+};
+
+const HtmlCase kHtmlCases[] = {
+    {'H', 0, 0, 200, 0, 0xFFFF, 30, 0, 0xFFFFFFFF, false,
+     "<basefont color=#FF0000>Red <b>bold</b> and <i>italic</i> <u>under</u></basefont> plain"},
+    {'H', 0, 0, 160, 0, 0xFFFF, 30, 0, 0xFFFFFFFF, false,
+     "<center>Centered title</center><p>First paragraph of text that wraps around.</p><right>right</right>"},
+    {'H', 0, 0, 180, 0, 0xFFFF, 30, 0, 0xFFFFFFFF, false,
+     "Visit <a href=\"http://a.com\">our site</a> or <a href=visited>this one</a> today"},
+    {'H', 0, 0, 150, 0, 0xFFFF, 30, 0, 0xFFFFFFFF, true,
+     "<body text=#00FF00 bgcolor=#101010 leftmargin=6 topmargin=4 rightmargin=3 bottommargin=2>Body with margins and "
+     "background</body>"},
+    {'H', 0, 0, 120, 1, 0x21, 30, 0, 0xFFFFFFFF, false,
+     "<h1>Head</h1><br>line<br/>two<BR>three<bq>quoted text</bq><div align=right>div</div>"},
+    {'H', 0, 0x40, 70, 0, 0xFFFF, 30, 0, 0x0000FFFF, false, "<b>Averyveryverylongsingleword</b> tail"},
+    {'H', 0, 0, 0, 0, 0xFFFF, 30, 0, 0xFFFFFFFF, false,
+     "<basefont color=lime size=7>No width <big>big</big> <small>small</small>"},
+    {'H', 0, 0x200, 60, 0, 0xFFFF, 30, 40, 0xFFFFFFFF, false,
+     "<i>crop texture keeps </i>going over several lines of html"},
+    {'H', 0, 0, 100, 0, 0xFFFF, 30, 0, 0xFFFFFFFF, false, "a < b and <unknown>tag</unknown> <><b"},
+    // Only tags and a crop-texture height: the original never returned here.
+    {'H', 0, 0x200, 20, 0, 0xFFFF, 30, 30, 0xFFFFFFFF, false, "<basefont color=red><b><i><u></u></i></b>"},
+    {'H', 1, 0x8, 140, 2, 0xFFFF, 30, 0, 0x010101FF, false,
+     "<p align=center>Black <basefont color=white>white</basefont> text with a border</p>"},
+    {'Q', 1, 0, 100, 0, 0, 30, 0, 0xFFFFFFFF, false, "<b>ascii</b> html text here"},
+    {'Q', 3, 0, 40, 0, 0, 30, 0, 0xFFFFFFFF, false, "<i>tags</i> first and a longer tail"},
+};
+
+// The original's output for kHtmlCases, with "visited" marked as a visited link: per 'H'
+// case h/x/c/t/l/g where g adds the <body> background and the links as
+// url|x|y|width|height, and per 'Q' case h/c/t.
+const char* const kHtmlExpected[] = {
+    "h 36",
+    "x 200",
+    "c 003C00620061007300650066006F006E007400200063006F006C006F0072003D0023004600460030003000300030003E0052006500640020003C0062003E0062006F006C0064003C002F0062003E00200061006E00640020003C0069003E006900740061006C00690063003C002F00690020003C00750075006E006400650072003C0075003C0061007300650066006F006E007400200070002E002E002E",
+    "t 003C00620061007300650066006F006E007400200063006F006C006F0072003D0023004600460030003000300030003E0052006500640020003C0062003E0062006F006C0064003C002F0062003E00200061006E00640020003C0069003E006900740061006C00690063003C002F00690020003C00750075006E006400650072003C0075003C0061007300650066006F006E00740020007000610069",
+    "l #984D986E0E25083C",
+    "g 204 40 2 E78E409C222A42E0 0 -",
+    "h 126",
+    "x 155",
+    "c 003C00630065006E007400650072003E00430065006E007400650072006500640020007400690074006C0065003C002F00630065006E007400650072003E003C0070003E0046006900720073007400200070006100720061006700720061007000680020002E002E002E",
+    "t 003C00630065006E007400650072003E00430065006E007400650072006500640020007400690074006C0065003C002F00630065006E007400650072003E003C0070003E0046006900720073007400200070006100720061006700720061007000680020006F00660020",
+    "l #523B5A797536447C",
+    "g 164 130 7 DA3B6552EC09C27B 0 -",
+    "h 36",
+    "x 182",
+    "c 005600690073006900740020003C006100200068007200650066003D00220068007400740070003A002F002F0061002E0063006F006D0022003E006F0075007200200073006900740065003C002F0061003E0020006F00720020003C006100200068007200650066003D007600690073006900740065006400740068006900730020006F002E002E002E",
+    "t 005600690073006900740020003C006100200068007200650066003D00220068007400740070003A002F002F0061002E0063006F006D0022003E006F0075007200200073006900740065003C002F0061003E0020006F00720020003C006100200068007200650066003D007600690073006900740065006400740068006900730020006F006E0065003C",
+    "l #9F7F87289507BE0A",
+    "g 184 40 2 84CC8DD81056340E 0 0068007400740070003A002F002F0061002E0063006F006D|47|3|110|14;0076006900730069007400650064|155|3|171|14;0076006900730069007400650064|0|21|27|14",
+    "h 36",
+    "x 130",
+    "c 003C0062006F0064007900200074006500780074003D00230030003000460046003000300020006200670063006F006C006F0072003D00230031003000310030003100300020006C006500660074006D0061007200670069006E003D003600200074006F0070006D0061007200670069006E003D0034002000720069006700680074006D0061007200670069006E003D003300200062006F00740074006F006D006D0061007200670069006E003D0032003E0042006F00640079002000770069007400680020006D0061007200670069006E007300200061006E00640020002E002E002E",
+    "t 003C0062006F0064007900200074006500780074003D00230030003000460046003000300020006200670063006F006C006F0072003D00230031003000310030003100300020006C006500660074006D0061007200670069006E003D003600200074006F0070006D0061007200670069006E003D0034002000720069006700680074006D0061007200670069006E003D003300200062006F00740074006F006D006D0061007200670069006E003D0032003E0042006F00640079002000770069007400680020006D0061007200670069006E007300200061006E0064002000610063006B",
+    "l #CBAE8768C121DFB2",
+    "g 154 46 2 8ECF690C2E9024C3 FF101010 -",
+    "h 108",
+    "x 89",
+    "c 003C00680031003E0048006500610064003C002F00680031003E003C00620072003E006C0069006E0065003C00620072002F003E00740077006F003C00420052003E00740068007200650065003C00620071003E00710075006F00740065006400200074006500780074003C003C00640069007600200061002E002E002E",
+    "t 003C00680031003E0048006500610064003C002F00680031003E003C00620072003E006C0069006E0065003C00620072002F003E00740077006F003C00420052003E00740068007200650065003C00620071003E00710075006F00740065006400200074006500780074003C003C0064006900760020006100690067006E",
+    "l #6BF79881F197C62D",
+    "g 124 112 6 362F9BEFF1E0B7D3 0 -",
+    "h 18",
+    "x 132",
+    "c 003C0062003E004100760065007200790076006500720079002E002E002E",
+    "t 003C0062003E0041007600650072007900760065007200790076006500720079",
+    "l #1277AC01D68F0741",
+    "g 74 22 1 3D4C05ED5401CFF7 0 -",
+    "h 18",
+    "x 17",
+    "c 003C00620061007300650066006F006E007400200063006F006C006F0072003D006C0069006D0065002000730069007A0065003D0037003E004E006F0020007700690064007400680020003C006200690067003E006200690067003C002F006200690067003E0020003C0073002E002E002E",
+    "t 003C00620061007300650066006F006E007400200063006F006C006F0072003D006C0069006D0065002000730069007A0065003D0037003E004E006F0020007700690064007400680020003C006200690067003E006200690067003C002F006200690067003E0020003C0073",
+    "l #79DD9CC46B80234C",
+    "g 397 22 1 4D47B8A8A9E5FB3B 0 -",
+    "h 162",
+    "x 62",
+    "c 003C0069003E00630072006F0070002000740065002E002E002E",
+    "t 003C0069003E00630072006F00700020007400650078007400750072",
+    "l #55DF330649C82E26",
+    "g 64 76 4 3174610403ADC1AC 0 -",
+    "h 18",
+    "x 60",
+    "c 00610020003C0020006200200061006E00640020003C0075006E006B006E006F0077006E003E007400610067003C002F0075006E006B006E006F0077006E0020003C003C",
+    "t 00610020003C0020006200200061006E00640020003C0075006E006B006E006F0077006E003E007400610067003C002F0075006E006B006E006F0077006E0020003C003C",
+    "l #2519AD69CBD8579B",
+    "g 104 22 1 5EDA9DA469FA1653 0 -",
+    "h 0",
+    "x 4",
+    "c 003C00620061007300650066006F006E007400200063006F006C006F0072003D007200650064003E003C0062003E003C0069003E003C0075003E003C002F0075003E003C002F0069003E003C002F0062003E",
+    "t 003C00620061007300650066006F006E007400200063006F006C006F0072003D007200650064003E003C0062003E003C0069003E003C0075003E003C002F0075003E003C002F0069003E003C002F0062003E",
+    "l #14650FB0739D0383",
+    "g 0 0 0 0 0 -",
+    "h 54",
+    "x 113",
+    "c 003C007000200061006C00690067006E003D00630065006E007400650072003E0042006C00610063006B0020003C00620061007300650066006F006E007400200063006F006C006F0072003D00770068006900740065003E00770068006900740065003C002F00620061007300650066006F006E0074002000740065007800740020002E002E002E",
+    "t 003C007000200061006C00690067006E003D00630065006E007400650072003E0042006C00610063006B0020003C00620061007300650066006F006E007400200063006F006C006F0072003D00770068006900740065003E00770068006900740065003C002F00620061007300650066006F006E00740020007400650078007400200077006900740068",
+    "l #F13F4EA01CB6B590",
+    "g 144 58 3 7046DD03B20D757D 0 -",
+    "h 36",
+    "c 003C0062003E00610073006300690069003C002F0062003E002000680074006D006C0020007400650078007400200068006500720065",
+    "t 003C0062003E00610073006300690069003C002F0062003E002000680074006D006C0020007400650078007400200068006500720065",
+    "h 108",
+    "c 003C0069003E0074006100670073003C002F002E002E002E",
+    "t 003C0069003E0074006100670073003C002F0069003E002000660069",
+};
 }  // namespace
 
 TEST_CASE("font layout and rendering match the original client on the fixture")
@@ -405,6 +519,101 @@ TEST_CASE("font layout and rendering match the original client on the fixture")
     {
         CAPTURE(i);
         CHECK(actual[i] == kExpected[i]);
+    }
+}
+
+TEST_CASE("HTML text matches the original client on the fixture")
+{
+    Fixture fx;
+    auto& r = fx.fonts;
+    r.markUrlVisited("visited");
+    std::vector<std::string> actual;
+
+    for (const auto& c : kHtmlCases)
+    {
+        const std::u16string s = text::utf8ToUtf16(c.text);
+        const auto f           = static_cast<std::uint8_t>(c.font);
+        const auto fl          = static_cast<std::uint16_t>(c.flags);
+        const auto al          = static_cast<text::TextAlign>(c.align);
+        text::FontRenderer::HtmlScope html(r, c.startColor, c.background);
+
+        if (c.kind == 'Q')
+        {
+            actual.push_back("h " + std::to_string(r.heightAscii(f, s, c.width, al, fl)));
+            actual.push_back("c " + hex16(r.textByWidthAscii(f, s, c.width, true)));
+            actual.push_back("t " + hex16(r.textByWidthAscii(f, s, c.width, false)));
+            continue;
+        }
+
+        actual.push_back("h " + std::to_string(r.heightUnicode(f, s, c.width, al, fl)));
+        actual.push_back("x " + std::to_string(r.widthExUnicode(f, s, c.width, al, fl)));
+        actual.push_back("c " + hex16(r.textByWidthUnicode(f, s, c.width, true)));
+        actual.push_back("t " + hex16(r.textByWidthUnicode(f, s, c.width, false)));
+        actual.push_back("l #" + hexPadded(fnvBytes(layoutString(r.layoutUnicode(f, s, al, fl, c.width)))));
+
+        auto g = r.generateUnicode(f, s, static_cast<std::uint16_t>(c.hue), static_cast<std::uint8_t>(c.cell), c.width,
+                                   al, fl, c.height);
+        std::string line = "g " + std::to_string(g.width) + " " + std::to_string(g.height) + " " +
+                           std::to_string(g.lineCount) + " " + hexU(g.pixels.empty() ? 0 : fnvPixels(g.pixels)) + " " +
+                           hexU(g.htmlBackgroundColor) + " ";
+        if (g.links.empty())
+            line += "-";
+        for (std::size_t i = 0; i < g.links.size(); i++)
+        {
+            const auto& l = g.links[i];
+            line += (i ? ";" : "") + hex16(text::utf8ToUtf16(l.url)) + "|" + std::to_string(l.x) + "|" +
+                    std::to_string(l.y) + "|" + std::to_string(l.width) + "|" + std::to_string(l.height);
+        }
+        actual.push_back(line);
+    }
+
+    REQUIRE(actual.size() == std::size(kHtmlExpected));
+
+    for (std::size_t i = 0; i < actual.size(); ++i)
+    {
+        CAPTURE(i);
+        CHECK(actual[i] == kHtmlExpected[i]);
+    }
+}
+
+TEST_CASE("HTML mode is scoped, and links and backgrounds come back with the bitmap")
+{
+    Fixture fx;
+    auto& r = fx.fonts;
+    const std::u16string tagged = u"<b>bold</b>";
+
+    // Outside HTML mode tags are plain characters.
+    const int plainWidth = r.widthExUnicode(0, tagged, 400, text::TextAlign::Left, 0);
+    {
+        text::FontRenderer::HtmlScope html(r);
+        CHECK(r.usingHtml());
+        CHECK(r.widthExUnicode(0, tagged, 400, text::TextAlign::Left, 0) < plainWidth);
+        CHECK(r.heightUnicode(0, tagged, 400, text::TextAlign::Left, 0) == 18);
+
+        auto g = r.generateUnicode(0, u"go <a href=\"http://x\">here</a> now", 0xFFFF, 30, 300, text::TextAlign::Left, 0);
+        REQUIRE(g.links.size() == 1);
+        CHECK(g.links[0].url == "http://x");
+        CHECK(g.links[0].contains(g.links[0].x, g.links[0].y));
+        CHECK_FALSE(g.links[0].contains(g.links[0].x + g.links[0].width, g.links[0].y));
+
+        CHECK_FALSE(r.urlVisited("http://x"));
+        r.markUrlVisited("http://x");
+        CHECK(r.urlVisited("http://x"));
+    }
+    CHECK_FALSE(r.usingHtml());
+    CHECK(r.widthExUnicode(0, tagged, 400, text::TextAlign::Left, 0) == plainWidth);
+
+    // <body bgcolor> only paints when the caller allows it.
+    const std::u16string body = u"<body bgcolor=#204060>x</body>";
+    {
+        text::FontRenderer::HtmlScope html(r, 0xFFFFFFFF, false);
+        CHECK(r.generateUnicode(0, body, 0xFFFF, 30, 50, text::TextAlign::Left, 0).htmlBackgroundColor == 0);
+    }
+    {
+        text::FontRenderer::HtmlScope html(r, 0xFFFFFFFF, true);
+        auto g = r.generateUnicode(0, body, 0xFFFF, 30, 50, text::TextAlign::Left, 0);
+        CHECK(g.htmlBackgroundColor != 0);
+        CHECK(std::find(g.pixels.begin(), g.pixels.end(), 0u) == g.pixels.end());
     }
 }
 

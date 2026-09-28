@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace uo::text
@@ -58,6 +59,20 @@ struct TextLine
 
 using TextLayout = std::vector<TextLine>;
 
+// A clickable <a href> area in HTML text, in bitmap pixels. As in the original client,
+// `width` holds the x where the link ends rather than its width, so the hit area runs from
+// x to x + width; contains() keeps that behavior so clicks land where they always did.
+struct WebLinkRect
+{
+    std::string url;  // UTF-8
+    int x      = 0;
+    int y      = 0;
+    int width  = 0;
+    int height = 0;
+
+    bool contains(int px, int py) const { return px >= x && px < x + width && py >= y && py < y + height; }
+};
+
 // A rendered string. Pixels are 32-bit values laid out as 0xAABBGGRR, i.e. RGBA8
 // bytes in memory on little-endian hosts, ready for an RGBA8888 texture upload.
 struct TextBitmap
@@ -66,6 +81,10 @@ struct TextBitmap
     int width     = 0;
     int height    = 0;
     int lineCount = 0;
+    // HTML text only: its links, and the <body bgcolor> (0xAABBGGRR, 0 when none) that
+    // already fills the transparent pixels.
+    std::vector<WebLinkRect> links;
+    uint32_t htmlBackgroundColor = 0;
 
     bool empty() const { return pixels.empty() || width <= 0 || height <= 0; }
 };
