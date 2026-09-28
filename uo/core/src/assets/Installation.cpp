@@ -105,6 +105,12 @@ bool Installation::load(const Options& options)
     // A missing cliloc is survivable: pre-AOS shards send plain text.
     _cliloc.load(path("cliloc." + options.language));
 
+    // Sounds are survivable too: the client plays silence rather than refusing to start.
+    sound::SoundLoader::Options soundOptions;
+    soundOptions.uoPath  = options.directory;
+    soundOptions.version = options.version;
+    _soundsLoaded        = _sounds.load(soundOptions);
+
     _maps.clear();
     for (int m : options.maps)
     {

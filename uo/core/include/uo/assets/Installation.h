@@ -9,6 +9,7 @@
 #include "uo/assets/Map.h"
 #include "uo/assets/TileData.h"
 #include "uo/io/ClientVersion.h"
+#include "uo/sound/SoundLoader.h"
 
 #include <memory>
 #include <string>
@@ -46,6 +47,12 @@ public:
     const Art& art() const { return *_art; }
     const Gumps& gumps() const { return *_gumps; }
     const Cliloc& cliloc() const { return _cliloc; }
+
+    // Sound effects and the music table. Optional: soundsLoaded() is false when the install has
+    // no sound archive, and music still resolves.
+    sound::SoundLoader& sounds() { return _sounds; }
+    const sound::SoundLoader& sounds() const { return _sounds; }
+    bool soundsLoaded() const { return _soundsLoaded; }
     const MapFacet* map(int index) const;
 
 private:
@@ -61,6 +68,8 @@ private:
     std::unique_ptr<Art> _art;
     std::unique_ptr<Gumps> _gumps;
     Cliloc _cliloc;
+    sound::SoundLoader _sounds;
+    bool _soundsLoaded = false;
     std::vector<std::unique_ptr<MapFacet>> _maps;
 };
 
