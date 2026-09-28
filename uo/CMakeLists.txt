@@ -14,3 +14,9 @@ if(UO_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
+
+# Offline asset converter (uo/tools/README.md). Needs zlib; skipped with a warning without it.
+option(UO_BUILD_TOOLS "Build the uoconvert asset converter" ON)
+if(UO_BUILD_TOOLS)
+  add_subdirectory(tools/uoconvert)
+endif()
