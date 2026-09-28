@@ -335,7 +335,7 @@ void SoundLoader::loadOverrides()
     }
 }
 
-std::optional<SoundEffect> SoundLoader::sound(int id)
+std::optional<SoundEffect> SoundLoader::sound(int id) const
 {
     if (id < 0 || id >= kMaxSoundId)
     {

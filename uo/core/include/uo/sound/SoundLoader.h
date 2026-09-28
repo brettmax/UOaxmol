@@ -71,7 +71,7 @@ public:
     // Re-lists Sounds/<id>.* overrides (ClassicUO's LoadOurs; a shard can drop files in live).
     void loadOverrides();
 
-    std::optional<SoundEffect> sound(int id);
+    std::optional<SoundEffect> sound(int id) const;
     const MusicTrack* music(int id) const;
 
     const std::unordered_map<int, MusicTrack>& musicTable() const { return _music; }
