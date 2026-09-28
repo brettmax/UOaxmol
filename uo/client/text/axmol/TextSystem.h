@@ -31,7 +31,8 @@ public:
     bool init(const assets::Installation& installation);
     void shutdown();
 
-    bool ready() const { return _installation != nullptr; }
+    // True once init() loaded fonts.mul and unifont.mul; UO-font views need both.
+    bool ready() const { return _installation != nullptr && _fontsLoaded; }
 
     const uo::text::FontRenderer& fonts() const { return _fonts; }
     // Mutable access for HTML mode and visited links.
@@ -46,6 +47,7 @@ private:
     TextSystem() = default;
 
     uo::text::FontRenderer _fonts;
+    bool _fontsLoaded = false;
     std::unique_ptr<uo::text::HuesResolver> _hues;
     const assets::Installation* _installation = nullptr;
     std::uint8_t _defaultFont = 1;
