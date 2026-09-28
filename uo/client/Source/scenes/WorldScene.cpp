@@ -7,6 +7,7 @@
 #include "uo/net/OutgoingPackets.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 using namespace ax;
 using uo::game::Direction;
@@ -96,6 +97,23 @@ void WorldScene::onEnter()
     refreshJournal();
     streamBlocks();
     centerCamera();
+
+    // Smoke-test hook: AXMOLUO_SCREENSHOT=/path/shot.png captures the world view and quits.
+    if (const char* shot = std::getenv("AXMOLUO_SCREENSHOT"))
+    {
+        std::string path = shot;
+        scheduleOnce(
+            [this, path](float) {
+                utils::captureScreen([this](bool ok, std::string_view file) {
+                    if (_quitting)
+                        return;
+                    _quitting = true;
+                    AXLOGI("AxmolUO screenshot {}: {}", ok ? "saved" : "failed", file);
+                    _director->end();
+                }, path);
+            },
+            2.0f, "screenshot");
+    }
 }
 
 void WorldScene::onExit()

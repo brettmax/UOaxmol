@@ -25,6 +25,24 @@ cmake --build build/uo
 ctest --test-dir build/uo --output-on-failure
 ```
 
+## Build and run the client
+
+Linux needs `libgtk-3-dev libxxf86vm-dev libfontconfig1-dev` plus Axmol's tools on `PATH`
+(`pwsh`, and `axslcc` 3.99.2 from github.com/axmolengine/axslcc; `setup.ps1` installs both).
+
+```sh
+cmake -S uo/client -B build/client -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja -C build/client AxmolUO
+build/client/bin/AxmolUO/AxmolUO
+```
+
+Settings live in `~/.config/AxmolUO/settings.json` (seeded from `client/Content/settings.json`):
+the UO data folder, server, account, client version, and `autoLogin`. Arrow keys walk
+(Shift runs), Esc logs out.
+
+`uo/tests/smoke/run_smoke.sh build/client` runs the real client under Xvfb against a fake
+shard with synthetic data files, logs in, enters the world and saves a screenshot.
+
 ## Conversion map
 
 | ClassicUO (C#) | AxmolUO (C++) | Status |

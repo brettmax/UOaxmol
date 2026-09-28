@@ -57,6 +57,7 @@ private:
     std::set<ax::KeyboardEvent::KeyCode> _held;
     float _walkCooldown = 0;
     bool _running       = false;
+    bool _quitting      = false;
     int _lastPlayerX = -1, _lastPlayerY = -1;
 
     static constexpr int kViewBlocks = 3;  // blocks loaded on each side of the player's block

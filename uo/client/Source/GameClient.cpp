@@ -45,6 +45,18 @@ void GameClient::connect()
     _session.start(s);
 }
 
+void GameClient::shutdown()
+{
+    errorHandler        = nullptr;
+    shardsHandler       = nullptr;
+    charactersHandler   = nullptr;
+    enteredWorldHandler = nullptr;
+    disconnectedHandler = nullptr;
+    if (_session.state() != uo::net::Session::State::Disconnected)
+        _session.stop();
+    _textures.reset();
+}
+
 void GameClient::update(float dt)
 {
     _transport.poll();

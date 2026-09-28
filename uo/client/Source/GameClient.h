@@ -34,6 +34,9 @@ public:
     uo::game::World& world() { return *_world; }
 
     void connect();
+    // Drops the connection and GPU resources while the renderer still exists (app exit).
+    void shutdown();
+    bool autoLoginDone = false;
     // Pumps the network. Called every frame by the running scene.
     void update(float dt);
 
