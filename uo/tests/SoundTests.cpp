@@ -347,20 +347,33 @@ TEST_CASE("0x54 and 0x6D payloads parse")
     CHECK(!parsePlayMusic(std::span(play, 1)));
 }
 
-TEST_CASE("T2A clients read Music/Config.txt, not the Digital one")
+TEST_CASE("Music/Config.txt is read under a modern client version when there is no Digital folder")
 {
+    // UOR data run with the client's 7.0.15.1 default: only Music/ exists.
     TempDir dir("uo_sound_music_t2a");
     writeText(dir.path / "Music" / "Config.txt", "9 britain1,loop\n");
-    writeText(dir.path / "Music" / "Digital" / "Config.txt", "0 oldult01,loop\n");
     writeFile(dir.path / "Music" / "britain1.mid", {0});
     writeFile(dir.path / "Music" / "britain1.ogg", {0});
 
     SoundLoader loader;
-    loader.load(opts(dir.path));
+    loader.load(opts(dir.path, uo::makeVersion(7, 0, 15, 1)));
     CHECK(loader.musicTable().size() == 1);
 
     auto* t9 = loader.music(9);
     CHECK((t9 && t9->loop && t9->file.filename() == "britain1.ogg"));
+}
+
+TEST_CASE("Music/Digital/Config.txt wins when present, whatever the client version")
+{
+    TempDir dir("uo_sound_music_digital");
+    writeText(dir.path / "Music" / "Config.txt", "9 britain1,loop\n");
+    writeText(dir.path / "Music" / "Digital" / "Config.txt", "0 oldult01,loop\n");
+
+    SoundLoader loader;
+    loader.load(opts(dir.path));  // CV_200
+    CHECK(loader.musicTable().size() == 1);
+    CHECK(loader.music(0));
+    CHECK(!loader.music(9));
 }
 
 TEST_CASE("MIDI-only installs play the converter's .ogg renders")

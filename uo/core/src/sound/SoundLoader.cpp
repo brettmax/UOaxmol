@@ -494,9 +494,6 @@ void SoundLoader::loadMusic()
     _music.clear();
     _musicFiles.clear();
 
-    // ClientVersion.CV_4011C: the Music/ -> Music/Digital/ switchover.
-    const bool useDigital = _options.version >= makeVersion(4, 0, 11, 'c');
-
     struct MusicRoot
     {
         fs::path music;
@@ -530,16 +527,20 @@ void SoundLoader::loadMusic()
         }
     }
 
-    // Config.txt from the install, else the converter's copy of it.
+    // Config.txt from the install, else the converter's copy of it. ClassicUO picks
+    // Music/Digital/ by client version (4.0.11c and later); the folder itself is the better
+    // witness, since the configured version need not match the data (UOR data under the
+    // 7.0.15.1 default has only Music/). Digital wins when both exist.
     fs::path config;
 
     for (const MusicRoot* r : {&install, &converted})
     {
-        const fs::path& dir = useDigital ? r->digital : r->music;
-
-        if (!dir.empty())
+        for (const fs::path* dir : {&r->digital, &r->music})
         {
-            config = findFile(dir, "Config.txt");
+            if (config.empty() && !dir->empty())
+            {
+                config = findFile(*dir, "Config.txt");
+            }
         }
 
         if (!config.empty())
