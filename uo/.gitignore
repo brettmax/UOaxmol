@@ -1,0 +1,2 @@
+# The engine root ignores every assets/ directory; ours holds source code.
+!assets/
