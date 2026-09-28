@@ -133,6 +133,7 @@ bool hitTest(const DrawItem& item, const ITileData& tiles, IArtHitTest& art, int
     }
 
     case DrawType::Shadow:
+    case DrawType::Mobile:  // WorldScene::entityAt picks mobiles itself for now
         return false;
     }
     return false;

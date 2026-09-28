@@ -428,6 +428,17 @@ void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out)
                     continue;
                 }
 
+                if (obj.kind == ObjectKind::Mobile)
+                {
+                    // MobileView: tile position plus the step offset; no tiledata.
+                    item.type = DrawType::Mobile;
+                    item.screenX += obj.offsetX;
+                    item.screenY += obj.offsetY - obj.offsetZ;
+                    item.hue = makeHueVector(view.overrideHue ? view.overrideHue : obj.hue, false, obj.alpha / 255.0f);
+                    keyed.push_back({depth, x, seq++, item});
+                    continue;
+                }
+
                 StaticTileData data = _tiles.item(obj.graphic);
 
                 if (view.hideRoofs && data.is(assets::TF_Roof))

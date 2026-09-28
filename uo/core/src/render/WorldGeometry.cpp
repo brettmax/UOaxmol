@@ -142,6 +142,32 @@ void buildWorldGeometry(const std::vector<DrawItem>& items,
             }
             break;
 
+        case DrawType::Mobile:
+        {
+            int cx = 0, cy = 0;
+            bool mirrored = false;
+            if (!textures.mobileFrame(*item.object, r, cx, cy, mirrored))
+            {
+                break;
+            }
+
+            // MobileView.DrawInternal: frames hang from the tile centre by their Center.
+            const float w  = static_cast<float>(r.width);
+            const float h  = static_cast<float>(r.height);
+            const float x  = mirrored ? sx + 22 - (w - cx) : sx + 22 - cx;
+            const float y  = sy + 22 - h - cy;
+            const float px[4] = {x, x + w, x, x + w};
+            const float py[4] = {y, y, y + h, y + h};
+            UvRect uv = halfPixelUvs(r);
+            if (mirrored)
+            {
+                uv.x += uv.w;
+                uv.w = -uv.w;
+            }
+            e.quad(r.texture, px, py, uv, kFlatNormals, item.hue);
+            break;
+        }
+
         case DrawType::Shadow:
             if (textures.itemArt(item.graphic, r))
             {
