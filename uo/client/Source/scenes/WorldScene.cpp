@@ -457,7 +457,14 @@ void WorldScene::centerCamera()
         return;
     auto size   = _director->getVisibleSize();
     auto origin = _director->getVisibleOrigin();
-    _worldNode->setPosition(origin + Vec2(size.width / 2, size.height / 2) - tileToWorld(p->x, p->y, p->z));
+    // Follow the player's step offset so the view scrolls smoothly (ClassicUO adds the
+    // player's Offset to the camera) instead of snapping a tile when each step completes.
+    const Vec2 player = mobilePosition(*p);
+    _worldNode->setPosition(origin + Vec2(size.width / 2, size.height / 2) - player);
+    // The draw list is built around the player's tile; shift the renderer by the same offset.
+    // pickAt converts through the renderer's node space, so picking stays aligned.
+    if (_renderer)
+        _renderer->setPosition(origin - (player - tileToWorld(p->x, p->y, p->z)));
 }
 
 void WorldScene::streamBlocks()
