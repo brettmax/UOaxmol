@@ -12,11 +12,24 @@ namespace uo::assets
 Image Gumps::get(std::uint32_t id, std::uint16_t hue) const
 {
     const io::FileIndex* e = _file->entry(id);
-    if (!e || e->width <= 0 || e->height <= 0)
+    if (!e)
         return {};
-    if (e->compression != io::CompressionType::None)
-        return {};  // TODO(uo): zlib/BWT gump entries from 7.0.100+ UOP installs
-    return decode(_file->raw(*e), e->width, e->height, _hues, hue);
+    if (e->compression == io::CompressionType::None)
+    {
+        if (e->width <= 0 || e->height <= 0)
+            return {};
+        return decode(_file->raw(*e), e->width, e->height, _hues, hue);
+    }
+
+    // Compressed UOP gumps carry { u32 width; u32 height } ahead of the rows.
+    std::vector<std::uint8_t> data;
+    bool bwt = false;
+    if (!_file->readDecompressed(*e, data, &bwt) || bwt)
+        return {};  // TODO(uo): BWT-wrapped gumps once the cliloc BWT decoder lands
+    io::BinaryReader r(data);
+    int w = static_cast<int>(r.readU32LE());
+    int h = static_cast<int>(r.readU32LE());
+    return decode(std::span<const std::uint8_t>(data).subspan(8), w, h, _hues, hue);
 }
 
 Image Gumps::decode(std::span<const std::uint8_t> raw, int width, int height, const Hues* hues, std::uint16_t hue)

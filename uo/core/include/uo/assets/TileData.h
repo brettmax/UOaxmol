@@ -38,8 +38,8 @@ enum TileFlag : std::uint64_t
     TF_Wearable     = 1ull << 22,
     TF_LightSource  = 1ull << 23,
     TF_Animation    = 1ull << 24,
-    TF_HoverOver    = 1ull << 25,
-    TF_NoDiagonal   = 1ull << 26,
+    TF_NoDiagonal   = 1ull << 25,  // 0x02000000, as in ClassicUO
+    TF_Unknown2     = 1ull << 26,
     TF_Armor        = 1ull << 27,
     TF_Roof         = 1ull << 28,
     TF_Door         = 1ull << 29,

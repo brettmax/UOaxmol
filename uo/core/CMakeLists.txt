@@ -14,3 +14,12 @@ if(MSVC)
 else()
   target_compile_options(uocore PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endif()
+
+# zlib: UOP entries (gumps, 0xDD gump packets, 0xD8 custom houses) are deflated. Inside an
+# Axmol build use the engine's bundled zlib; standalone, the system one.
+if(TARGET zlib)
+  target_link_libraries(uocore PUBLIC zlib)
+else()
+  find_package(ZLIB REQUIRED)
+  target_link_libraries(uocore PUBLIC ZLIB::ZLIB)
+endif()
