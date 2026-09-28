@@ -84,6 +84,7 @@ target_link_libraries(${APP_NAME} uo_client_input)
 # Batched world renderer and GPU hue shader (uo/client/world).
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world ${CMAKE_BINARY_DIR}/uo_world)
 target_link_libraries(${APP_NAME} uo_world_axmol)
+target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 uo_world_add_shaders(${APP_NAME})
 
 # UO fonts (fonts.mul, unifont), cliloc text, overhead text and journal (uo/client/text).
