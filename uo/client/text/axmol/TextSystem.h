@@ -34,6 +34,8 @@ public:
     bool ready() const { return _installation != nullptr; }
 
     const uo::text::FontRenderer& fonts() const { return _fonts; }
+    // Mutable access for HTML mode and visited links.
+    uo::text::FontRenderer& fonts() { return _fonts; }
     const assets::Cliloc& cliloc() const;
 
     // The font behind RenderedText's 0xFF: unicode font 1 on 3.0.5d+ clients, else 0.

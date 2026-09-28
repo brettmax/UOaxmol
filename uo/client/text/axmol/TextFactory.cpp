@@ -53,9 +53,15 @@ uo::text::TextBitmap renderText(std::string_view utf8, const TextStyle& style)
     if (!system.ready() || utf8.empty())
         return {};
 
-    const auto& fonts       = system.fonts();
+    auto& fonts             = system.fonts();
     const std::uint8_t font = system.resolveFont(style.font);
     const std::u16string s  = fontText(utf8, style.unicode);
+
+    if (style.unicode && style.html)
+    {
+        uo::text::FontRenderer::HtmlScope html(fonts, style.htmlColor, style.htmlBackgroundColored);
+        return fonts.generateUnicode(font, s, style.hue, style.cell, style.maxWidth, style.align, style.flags());
+    }
 
     if (style.unicode)
         return fonts.generateUnicode(font, s, style.hue, style.cell, style.maxWidth, style.align, style.flags());
@@ -69,6 +75,14 @@ ax::Size measure(std::string_view utf8, const TextStyle& style)
 
     if (!system.ready() || utf8.empty())
         return ax::Size::zero;
+
+    // HTML margins and wrapping only come out of a full render.
+    if (style.unicode && style.html)
+    {
+        const uo::text::TextBitmap bitmap = renderText(utf8, style);
+        return bitmap.empty() ? ax::Size::zero
+                              : ax::Size(static_cast<float>(bitmap.width), static_cast<float>(bitmap.height));
+    }
 
     const auto& fonts       = system.fonts();
     const std::uint8_t font = system.resolveFont(style.font);
@@ -168,8 +182,9 @@ void TextLabel::setHue(std::uint16_t hue)
 
 void TextLabel::rebuild()
 {
-    const uo::text::TextBitmap bitmap = renderText(_text, _style);
+    uo::text::TextBitmap bitmap = renderText(_text, _style);
     _lineCount = bitmap.lineCount;
+    _links     = std::move(bitmap.links);
     _hitMask.clear();
     _hitWidth = 0;
 
@@ -279,24 +294,37 @@ std::string stripHtml(std::string_view html)
     return out;
 }
 
+const std::string* TextLabel::linkAt(int x, int y) const
+{
+    for (const auto& link : _links)
+        if (link.contains(x, y))
+            return &link.url;
+
+    return nullptr;
+}
+
+void TextLabel::markLinkVisited(const std::string& url)
+{
+    auto& system = TextSystem::instance();
+
+    if (!system.ready())
+        return;
+
+    system.fonts().markUrlVisited(url);
+    rebuild();
+}
+
 ax::Node* createHtml(std::string_view html, int width, std::uint32_t defaultRgba, bool hasBackground)
 {
     TextStyle style;
-    style.font     = 1;
-    style.unicode  = true;
-    style.maxWidth = width;
+    style.font                  = 1;
+    style.unicode               = true;
+    style.maxWidth              = width;
+    style.html                  = true;
+    style.htmlColor             = defaultRgba == 0xFFFFFFFF ? 0xFFFFFFFF : htmlStartColor(defaultRgba);
+    style.htmlBackgroundColored = !hasBackground;
 
-    auto* label = TextLabel::create(stripHtml(html), style);
-
-    if (!label)
-        return nullptr;
-
-    // The text renders white, so the sprite color carries the HTML default color.
-    label->setColor(ax::Color32(static_cast<uint8_t>(defaultRgba >> 24), static_cast<uint8_t>(defaultRgba >> 16),
-                                static_cast<uint8_t>(defaultRgba >> 8)));
-    label->setOpacity(static_cast<uint8_t>(defaultRgba & 0xFF));
-    (void)hasBackground;  // background fill arrives with the HTML port
-    return label;
+    return TextLabel::create(html, style);
 }
 
 }  // namespace uo::client::text

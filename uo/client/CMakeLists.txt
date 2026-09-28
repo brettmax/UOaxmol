@@ -91,6 +91,11 @@ uo_world_add_shaders(${APP_NAME})
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/text ${CMAKE_BINARY_DIR}/uo_text)
 target_link_libraries(${APP_NAME} uo_text_axmol)
 
+# Sound effects and music on AudioEngine (uo/client/audio).
+include(${CMAKE_CURRENT_SOURCE_DIR}/audio/sources.cmake)
+target_sources(${APP_NAME} PRIVATE ${UO_CLIENT_AUDIO_SOURCES})
+target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Default Platform-specific setup
 include(AXGamePlatformSetup)
 

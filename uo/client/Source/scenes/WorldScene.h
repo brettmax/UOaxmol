@@ -17,6 +17,11 @@
 #include <unordered_map>
 #include <vector>
 
+namespace uo::client::text
+{
+class JournalView;
+}
+
 namespace uo::client::input
 {
 class InputRouter;
@@ -73,6 +78,7 @@ private:
     void centerCamera();
     void refreshJournal();
     std::string journalText(const uo::world::Message& m) const;
+    void appendJournal(const uo::world::Message& m);
 
     // Draw position of a mobile this frame: its tile plus the step it is part-way through.
     ax::Vec2 mobilePosition(const uo::world::Entity& e) const;
@@ -91,7 +97,8 @@ private:
     void onEscape();
 
     ax::Node* _worldNode = nullptr;
-    ax::Label* _journal  = nullptr;
+    ax::Label* _journal  = nullptr;  // TTF fallback when UO fonts are missing
+    uo::client::text::JournalView* _journalView = nullptr;
     ax::Label* _coords   = nullptr;
     std::unique_ptr<uo::client::input::InputRouter> _input;
 
