@@ -86,6 +86,10 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world ${CMAKE_BINARY_DIR}/uo_world)
 target_link_libraries(${APP_NAME} uo_world_axmol)
 uo_world_add_shaders(${APP_NAME})
 
+# UO fonts (fonts.mul, unifont), cliloc text, overhead text and journal (uo/client/text).
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/text ${CMAKE_BINARY_DIR}/uo_text)
+target_link_libraries(${APP_NAME} uo_text_axmol)
+
 # Default Platform-specific setup
 include(AXGamePlatformSetup)
 

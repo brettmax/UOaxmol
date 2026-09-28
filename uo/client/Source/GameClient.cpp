@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include "GameClient.h"
 
+#include "axmol/TextSystem.h"
+#include "axmol/axmol.h"
+
 #include "uo/net/OutgoingPackets.h"
 
 #include <algorithm>
@@ -63,7 +66,12 @@ bool GameClient::loadAssets()
     _assetsLoaded = _install.load(o);
     _error        = _install.error();
     if (_assetsLoaded)
+    {
         _textures = std::make_unique<UOTextures>(_install);
+        // Missing fonts.mul is not fatal yet: scenes fall back to TTF labels.
+        if (!uo::client::text::TextSystem::instance().init(_install))
+            AXLOGW("AxmolUO: fonts.mul not found; UO fonts disabled");
+    }
     return _assetsLoaded;
 }
 
@@ -90,6 +98,7 @@ void GameClient::shutdown()
     disconnectedHandler = nullptr;
     if (_session.state() != uo::net::Session::State::Disconnected)
         _session.stop();
+    uo::client::text::TextSystem::instance().shutdown();
     _textures.reset();
 }
 
