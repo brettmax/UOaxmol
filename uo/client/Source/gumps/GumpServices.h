@@ -78,7 +78,13 @@ public:
 
     // Resolved cliloc text with ~1_ARG~ substitution; empty when unknown.
     virtual std::string cliloc(uint32_t number, std::string_view args = {}) = 0;
+
+    // The colour text of `hue` draws in (text entry carets use it).
+    virtual ax::Color32 textColor(uint16_t /*hue*/) const { return ax::Color32::white; }
 };
+
+// Colour of unicode text in `hue`: the hue ramp's brightest entry, white when unhued.
+ax::Color32 unicodeHueColor(const uo::assets::Installation* assets, uint16_t hue);
 
 // Everything a gump needs, handed to each gump at construction.
 struct GumpContext
@@ -133,7 +139,8 @@ public:
     ax::Size measure(std::string_view utf8, const GumpTextStyle& style) override;
     std::string cliloc(uint32_t number, std::string_view args = {}) override;
 
-    ax::Color32 hueColor(uint16_t hue) const;
+    ax::Color32 hueColor(uint16_t hue) const { return unicodeHueColor(_assets, hue); }
+    ax::Color32 textColor(uint16_t hue) const override { return hueColor(hue); }
 
 private:
     const uo::assets::Installation* _assets;

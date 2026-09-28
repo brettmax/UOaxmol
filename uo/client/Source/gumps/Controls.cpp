@@ -4,6 +4,8 @@
 #include "uo/assets/Color.h"
 
 #include <algorithm>
+#include <cmath>
+#include <unordered_set>
 
 namespace uo::client::gumps
 {
@@ -52,6 +54,87 @@ void addNodeAt(Control* parent, ax::Node* n, float x, float y)
     n->setPosition(ax::Vec2(x, parent->getContentSize().height - y));
     parent->addChild(n);
 }
+
+// Logs a gump art id the client files lack, once per id per run.
+void reportMissingGump(uint16_t id, const char* use)
+{
+    static std::unordered_set<uint16_t> reported;
+
+    if (reported.insert(id).second)
+    {
+        AXLOGW("gumps: gump art {} (0x{:04X}) missing from gumpart; {}", id, id, use);
+    }
+}
+
+// Stand-in for missing art: a neutral box, so the layout and the hit area stay as designed.
+void addPlaceholder(Control* parent, float w, float h, bool highlighted = false)
+{
+    if (w <= 0 || h <= 0)
+    {
+        return;
+    }
+
+    auto* box = ax::LayerColor::create(highlighted ? ax::Color32(150, 140, 110, 255) : ax::Color32(90, 85, 75, 255),
+                                       w, h);
+    addNodeAt(parent, box, 0, 0);
+}
+
+bool hasResizeSet(GumpTextures& textures, uint16_t graphic)
+{
+    for (int i = 0; i < 9; ++i)
+    {
+        if (!textures.gump(static_cast<uint16_t>(graphic + i)))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Resize backgrounds that ModernUO scripts use but older gumpart.mul files (T2A-era, UOR)
+// lack: a dark frame maps to the black-and-gold 2620 set and anything else to the 2600
+// scroll set, the backgrounds every client since T2A ships.
+constexpr uint16_t kLightResize = 2600;
+constexpr uint16_t kDarkResize = 2620;
+
+bool isDarkResize(uint16_t graphic)
+{
+    switch (graphic)
+    {
+        case 2620: case 3600: case 5054: case 5120: case 9250: case 9260: case 9270: case 9300: case 9380: case 9390:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// The resize set to draw for `graphic`: itself when the files have all nine pieces, else the
+// closest T2A-era set that is complete, else 0 (draw a placeholder).
+uint16_t resolveResizeGraphic(GumpTextures& textures, uint16_t graphic)
+{
+    if (hasResizeSet(textures, graphic))
+    {
+        return graphic;
+    }
+
+    const uint16_t first = isDarkResize(graphic) ? kDarkResize : kLightResize;
+    const uint16_t second = first == kDarkResize ? kLightResize : kDarkResize;
+
+    for (uint16_t candidate : {first, second})
+    {
+        if (candidate != graphic && hasResizeSet(textures, candidate))
+        {
+            reportMissingGump(graphic, candidate == kDarkResize ? "resizepic drawn with 2620" : "resizepic drawn with 2600");
+            return candidate;
+        }
+    }
+
+    reportMissingGump(graphic, "resizepic drawn as a placeholder");
+    return 0;
+}
+
+constexpr float kPlaceholderSize = 16;
 
 constexpr uint16_t kHtmlBackground = 0x2486;
 constexpr uint16_t kScrollBackground = 257;
@@ -135,6 +218,12 @@ void GumpPic::setGraphic(uint16_t graphic, uint16_t hue, bool partialHue)
     }
 
     auto* tex = _ctx.textures->gump(graphic, hue, partialHue);
+
+    if (!tex && graphic != 0)
+    {
+        reportMissingGump(graphic, "gumppic skipped");
+    }
+
     setUOSize(textureSize(tex).width, textureSize(tex).height);
     _sprite = topLeftSprite(tex);
     addSpriteAt(this, _sprite, 0, 0);
@@ -158,7 +247,16 @@ GumpPicTiled::GumpPicTiled(GumpContext& ctx, uint16_t graphic, float width, floa
     autorelease();
     setAcceptsInput(true);
     setUOSize(width, height);
-    addNodeAt(this, TiledTexture::create(ctx.textures->gump(graphic, hue), width, height), 0, 0);
+    auto* texture = ctx.textures->gump(graphic, hue);
+
+    if (!texture)
+    {
+        // Tiled pictures are decoration over a background; the layout does not need them.
+        reportMissingGump(graphic, "gumppictiled skipped");
+        return;
+    }
+
+    addNodeAt(this, TiledTexture::create(texture, width, height), 0, 0);
 }
 
 // --- ResizePic -------------------------------------------------------------------------
@@ -188,14 +286,21 @@ void ResizePic::build()
     ax::Texture2D* t[9];
     ax::Size b[9];
 
-    for (int i = 0; i < 9; ++i)
-    {
-        t[i] = _ctx.textures->gump(static_cast<uint16_t>(_graphic + kOffset[i]));
-        b[i] = textureSize(t[i]);
-    }
-
     const float W = getContentSize().width;
     const float H = getContentSize().height;
+    const uint16_t graphic = resolveResizeGraphic(*_ctx.textures, _graphic);
+
+    if (graphic == 0)
+    {
+        addPlaceholder(this, W, H);
+        return;
+    }
+
+    for (int i = 0; i < 9; ++i)
+    {
+        t[i] = _ctx.textures->gump(static_cast<uint16_t>(graphic + kOffset[i]));
+        b[i] = textureSize(t[i]);
+    }
 
     const float offsetTop = std::max(b[0].height, b[2].height) - b[1].height;
     const float offsetBottom = std::max(b[5].height, b[7].height) - b[6].height;
@@ -232,9 +337,7 @@ GumpButton::GumpButton(GumpContext& ctx, uint16_t normal, uint16_t pressed, uint
     autorelease();
     setAcceptsInput(true);
     setMovesGump(false);
-    auto size = textureSize(_ctx.textures->gump(normal));
-    setUOSize(size.width, size.height);
-    showState();
+    setGraphics(normal, pressed, over);
 }
 
 void GumpButton::setGraphics(uint16_t normal, uint16_t pressed, uint16_t over)
@@ -242,7 +345,14 @@ void GumpButton::setGraphics(uint16_t normal, uint16_t pressed, uint16_t over)
     _normal = normal;
     _pressed = pressed;
     _over = over;
-    auto size = textureSize(_ctx.textures->gump(normal));
+    auto* texture = _ctx.textures->gump(normal);
+
+    if (!texture)
+    {
+        reportMissingGump(normal, "button drawn as a placeholder");
+    }
+
+    auto size = texture ? textureSize(texture) : ax::Size(kPlaceholderSize, kPlaceholderSize);
     setUOSize(size.width, size.height);
     showState();
 }
@@ -265,7 +375,21 @@ void GumpButton::showState()
         _sprite->removeFromParent();
     }
 
+    if (_placeholder)
+    {
+        _placeholder->removeFromParent();
+        _placeholder = nullptr;
+    }
+
     _sprite = topLeftSprite(_ctx.textures->gump(g));
+
+    if (!_sprite && !_ctx.textures->gump(_normal))
+    {
+        addPlaceholder(this, getContentSize().width, getContentSize().height, _isPressed || _isHovered);
+        _placeholder = getChildren().back();
+        return;
+    }
+
     addSpriteAt(this, _sprite, 0, 0);
 }
 
@@ -361,7 +485,14 @@ Checkbox::Checkbox(GumpContext& ctx, uint16_t unchecked, uint16_t checked, bool 
     autorelease();
     setAcceptsInput(true);
     setMovesGump(false);
-    auto size = textureSize(_ctx.textures->gump(unchecked));
+    auto* texture = _ctx.textures->gump(unchecked);
+
+    if (!texture)
+    {
+        reportMissingGump(unchecked, "checkbox drawn as a placeholder");
+    }
+
+    auto size = texture ? textureSize(texture) : ax::Size(kPlaceholderSize, kPlaceholderSize);
     setUOSize(size.width, size.height);
     setChecked(isChecked);
 }
@@ -375,7 +506,21 @@ void Checkbox::setChecked(bool v)
         _sprite->removeFromParent();
     }
 
+    if (_placeholder)
+    {
+        _placeholder->removeFromParent();
+        _placeholder = nullptr;
+    }
+
     _sprite = topLeftSprite(_ctx.textures->gump(_checked ? _checkedGraphic : _uncheckedGraphic));
+
+    if (!_sprite)
+    {
+        addPlaceholder(this, getContentSize().width, getContentSize().height, _checked);
+        _placeholder = getChildren().back();
+        return;
+    }
+
     addSpriteAt(this, _sprite, 0, 0);
 }
 
@@ -625,7 +770,54 @@ void HtmlArea::onMouseDown(MouseButton button, const ax::Vec2& local)
 
 // --- TextEntry -------------------------------------------------------------------------
 
+class TextEntry::Input final : public ax::ui::InputField
+{
+public:
+    static Input* create(float fontSize)
+    {
+        auto* input = new Input();
+
+        if (input->initWithPlaceholder("", "fonts/arial.ttf", fontSize, 1, ax::Color32(0, 0, 0, 0)))
+        {
+            input->autorelease();
+            return input;
+        }
+
+        delete input;
+        return nullptr;
+    }
+
+    int cursor() const { return _cursorCharOffset; }
+    bool focused() const { return _isAttachWithIME; }
+};
+
+namespace
+{
+// Unicode font 1 with a black border, as ClassicUO draws gump text entries.
+constexpr uint8_t kEntryFont = 1;
+constexpr float kCaretBlink = 0.5f;
+
+// The first `chars` UTF-8 code points of `s`.
+std::string_view utf8Prefix(std::string_view s, int chars)
+{
+    size_t i = 0;
+
+    for (int n = 0; n < chars && i < s.size(); ++n)
+    {
+        ++i;
+
+        while (i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80)
+        {
+            ++i;
+        }
+    }
+
+    return s.substr(0, i);
+}
+}  // namespace
+
 TextEntry::TextEntry(GumpContext& ctx, float width, float height, uint16_t hue, std::string_view text, int maxLength)
+    : _ctx(ctx)
 {
     init();
     autorelease();
@@ -633,24 +825,102 @@ TextEntry::TextEntry(GumpContext& ctx, float width, float height, uint16_t hue, 
     setMovesGump(false);
     setUOSize(width, height);
 
-    _field = ax::ui::InputField::create("", "fonts/arial.ttf", std::max(10.0f, height - 6));
+    _style.font = kEntryFont;
+    _style.unicode = true;
+    _style.hue = hue;
+    _style.border = true;
+
+    auto* clip = ax::ClippingRectangleNode::create(ax::Rect(0, 0, width, height));
+    clip->setContentSize(ax::Size(width, height));
+    addNodeAt(this, clip, 0, 0);
+    _clip = clip;
+
+    _field = Input::create(std::max(10.0f, height - 6));
 
     if (_field)
     {
         _field->setString(std::string(text));
         _field->setMaxLength(maxLength > 0 ? maxLength : 255);
-
-        if (auto* fb = dynamic_cast<FallbackGumpText*>(ctx.text))
-        {
-            _field->setTextColor(fb->hueColor(hue));
-        }
-
+        _field->setTextColor(ax::Color32(0, 0, 0, 0));
+        _field->setCursorColor(ax::Color32(0, 0, 0, 0));
         _field->setContentSize(ax::Size(width, height));
         _field->setIgnoreAnchorPointForPosition(false);
         _field->setAnchorPoint(ax::Vec2(0, 1));
         _field->setPosition(ax::Vec2(0, height));
+        _field->setOpacity(0);
         addChild(_field);
     }
+
+    const float caretHeight = std::min(height, std::max(1.0f, _ctx.text->measure("A", _style).height));
+    auto* caret = ax::LayerColor::create(_ctx.text->textColor(hue), 1, caretHeight);
+    caret->setIgnoreAnchorPointForPosition(false);
+    caret->setAnchorPoint(ax::Vec2(0, 1));
+    caret->setVisible(false);
+    _clip->addChild(caret);
+    _caret = caret;
+
+    sync(true);
+    schedule([this](float dt) {
+        _blink += dt;
+        sync();
+    }, "entry");
+}
+
+void TextEntry::sync(bool force)
+{
+    if (!_field)
+    {
+        return;
+    }
+
+    std::string_view current = _field->getString();
+    const int cursor = _field->cursor();
+    const float H = getContentSize().height;
+    const float W = getContentSize().width;
+
+    if (force || current != _shownText)
+    {
+        _shownText = current;
+
+        if (_label)
+        {
+            _label->removeFromParent();
+            _label = nullptr;
+        }
+
+        if (!_shownText.empty())
+        {
+            _label = _ctx.text->createLabel(_shownText, _style);
+
+            if (_label)
+            {
+                _label->setIgnoreAnchorPointForPosition(false);
+                _label->setAnchorPoint(ax::Vec2(0, 1));
+                _clip->addChild(_label);
+            }
+        }
+
+        _shownCursor = -1;
+    }
+
+    if (_shownCursor != cursor)
+    {
+        _shownCursor = cursor;
+        _blink = 0;
+
+        // Keep the caret in view: long text scrolls left, as in a classic text box.
+        const float caretX = _ctx.text->measure(utf8Prefix(_shownText, cursor), _style).width;
+        const float scroll = std::max(0.0f, caretX - (W - 2));
+
+        if (_label)
+        {
+            _label->setPosition(ax::Vec2(-scroll, H));
+        }
+
+        _caret->setPosition(ax::Vec2(caretX - scroll, H));
+    }
+
+    _caret->setVisible(_field->focused() && std::fmod(_blink, 2 * kCaretBlink) < kCaretBlink);
 }
 
 std::string TextEntry::text() const
@@ -664,6 +934,7 @@ void TextEntry::focus()
     {
         // attachWithIME is protected on InputField but public on its InputDelegate base.
         static_cast<ax::InputDelegate*>(_field)->attachWithIME();
+        _blink = 0;
     }
 }
 

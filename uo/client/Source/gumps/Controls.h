@@ -103,6 +103,7 @@ protected:
     bool _isPressed = false;
     bool _isHovered = false;
     ax::Sprite* _sprite = nullptr;
+    ax::Node* _placeholder = nullptr;  // stands in for art the client files lack
 };
 
 // buttontileart: a button with a piece of item art centred in a cell of the given size;
@@ -139,6 +140,7 @@ private:
     bool _radio;
     int _group;
     ax::Sprite* _sprite = nullptr;
+    ax::Node* _placeholder = nullptr;  // stands in for art the client files lack
 };
 
 // Item art (tilepic / tilepichue), hued, with the tiledata partial-hue flag.
@@ -219,7 +221,21 @@ public:
     void onClick(MouseButton button) override;
 
 private:
-    ax::ui::InputField* _field = nullptr;
+    // Redraws the UO-font text and caret when the input's text or cursor moved.
+    void sync(bool force = false);
+
+    GumpContext& _ctx;
+    GumpTextStyle _style;
+    // Takes keyboard and IME input; its own TTF text and cursor are transparent, and the
+    // text is drawn with the UO unicode font instead, as ClassicUO's StbTextBox does.
+    class Input;
+    Input* _field = nullptr;
+    ax::Node* _clip = nullptr;
+    ax::Node* _label = nullptr;
+    ax::Node* _caret = nullptr;
+    std::string _shownText;
+    int _shownCursor = -1;
+    float _blink = 0;
 };
 
 // checkertrans: makes whatever it overlaps half transparent. Applied once when the layout is
