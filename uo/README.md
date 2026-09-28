@@ -10,6 +10,7 @@ targeting ModernUO shards and The Second Age era data files.
 |---|---|---|
 | `core/` | `uocore`: engine-independent C++20 library. UO file formats, network protocol, game state. | `ClassicUO.IO`, `ClassicUO.Assets`, `ClassicUO.Client/Network`, `ClassicUO.Client/Game` |
 | `client/` | The Axmol application: scenes, rendering, input, audio. Links `uocore`. | `ClassicUO.Client` (scenes, UI), `ClassicUO.Renderer` |
+| `tools/` | `uoconvert`, offline asset converter to PNG atlases + JSON. | — |
 | `tests/` | doctest suite for `uocore`, runnable without the engine or UO data. | — |
 | `server/` | Server packaging notes (ModernUO stays on .NET; see the file). | — |
 
@@ -62,11 +63,13 @@ shard with synthetic data files, logs in, enters the world and saves a screensho
 | `Network/NetClient`, `Scenes/LoginScene` flow | `core/net/Session`, `PacketFramer` | done (unencrypted, as ModernUO accepts) |
 | `Network/OutgoingPackets` | `core/net/OutgoingPackets` | login, walk, speech, clicks |
 | `Network/PacketHandlers`, `Game/World`, `Game/GameObjects` | `core/world/` (`uo::world`) | entities, containers, equipment, corpses, speech, effects, targeting, trade, shops, books, party, skills; gumps and walking plug in through hooks |
-| `Assets/AnimationsLoader`, `AnimDataLoader` | — | to do |
-| `Assets/FontsLoader`, unifont | — | to do |
-| `Assets/TexmapsLoader`, `LightsLoader`, `MultiLoader`, `SoundsLoader` | — | to do |
-| `Renderer/*`, `Game/Scenes/GameScene` | `client/` | in progress |
-| `Game/UI/Gumps/*` | — | to do |
+| `Assets/AnimationsLoader`, `AnimDataLoader` | `core/anim`, `client/Source/anim` | decoding and `MobileAnimationNode` done; not yet used by `WorldScene` |
+| `Assets/FontsLoader`, unifont, `Game/UI/Controls/RenderedText` | `core/text`, `client/text` | done; overhead text and journal views not yet wired |
+| `Assets/SoundsLoader`, `Game/Managers/AudioManager` | `core/sound`, `client/audio` | done; not yet wired to 0x54/0x6D |
+| `Assets/TexmapsLoader`, `LightsLoader`, `MultiLoader`, verdata | `core/assets`, `tools/uoconvert` | done; `uoconvert` bakes atlases offline |
+| `Game/Managers/Pathfinder`, walking | `core/movement`, `client/input` | done, wired into `WorldScene` |
+| `Renderer/*`, `Game/Scenes/GameScene` | `core/render`, `client/world` | `WorldRenderer` done; `WorldScene` still draws its own placeholder view |
+| `Game/UI/Gumps/*` | `core/gumps`, `client/Source/gumps` | done; not yet installed in `GameClient` |
 | `Network/Encryption/*` | — | not needed for ModernUO |
 
 Source files derived from ClassicUO keep its BSD-2-Clause license and say which C# file
