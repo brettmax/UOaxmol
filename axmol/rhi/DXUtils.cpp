@@ -117,6 +117,11 @@ const PixelFormatInfo* toDxgiFormatInfo(PixelFormat pf)
 
 int evalulateMaxTexSize(D3D_FEATURE_LEVEL fl)
 {
+    // Every level from 11_0 up guarantees 16384 (D3D11/12_REQ_TEXTURE2D_U_OR_V_DIMENSION),
+    // including levels newer than this list such as 12_2.
+    if (fl >= D3D_FEATURE_LEVEL_11_0)
+        return 16384;
+
     switch (fl)
     {
     case D3D_FEATURE_LEVEL_12_1:

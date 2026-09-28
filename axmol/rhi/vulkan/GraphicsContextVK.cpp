@@ -25,6 +25,7 @@
 #include <glad/vulkan.h>
 #include <assert.h>
 #include <algorithm>
+#include <utility>
 
 namespace ax::rhi::vk
 {
@@ -1681,9 +1682,17 @@ void GraphicsContextImpl::doReadPixels(RenderTarget* rt, std::function<void(cons
     // Submit and wait
     _driver->finishIsolateSubmission(submission);
 
-    // Map and copy out
-    void* mapped = nullptr;
-    AXASSERT(vmaMapMemory(_driver->getVmaAllocator(), stagingAlloc, &mapped) == VK_SUCCESS, "vmaMapMemory failed");
+    // Map and copy out. The map call must not live inside AXASSERT: release builds compile the
+    // assert away, leaving `mapped` null and the memcpy below reading address 0.
+    void* mapped      = nullptr;
+    const auto mapRes = vmaMapMemory(_driver->getVmaAllocator(), stagingAlloc, &mapped);
+    if (mapRes != VK_SUCCESS || !mapped)
+    {
+        AXLOGE("GraphicsContextImpl::doReadPixels: vmaMapMemory failed, res={}", static_cast<int>(mapRes));
+        vmaDestroyBuffer(_driver->getVmaAllocator(), stagingBuf, stagingAlloc);
+        callback(pbd);
+        return;
+    }
 
     pbd._width  = width;
     pbd._height = height;
@@ -1691,6 +1700,15 @@ void GraphicsContextImpl::doReadPixels(RenderTarget* rt, std::function<void(cons
     ::memcpy(pbd._data.data(), mapped, static_cast<size_t>(bufferSize));
 
     vmaUnmapMemory(_driver->getVmaAllocator(), stagingAlloc);
+
+    // Callers expect RGBA8. Swapchains are usually B8G8R8A8 (always on Windows/NVIDIA), so swap
+    // the red and blue channels back.
+    if (colorDesc.pixelFormat == PixelFormat::BGRA8)
+    {
+        auto* px = pbd._data.data();
+        for (size_t i = 0, n = static_cast<size_t>(bufferSize); i + 3 < n; i += 4)
+            std::swap(px[i], px[i + 2]);
+    }
 
     // Cleanup
     vmaDestroyBuffer(_driver->getVmaAllocator(), stagingBuf, stagingAlloc);
