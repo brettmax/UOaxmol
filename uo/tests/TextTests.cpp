@@ -6,6 +6,7 @@
 #include "uo/assets/Bwt.h"
 #include "uo/assets/Cliloc.h"
 #include "uo/text/FontRenderer.h"
+#include "uo/text/JournalText.h"
 #include "uo/text/SpeechText.h"
 #include "uo/text/Utf.h"
 
@@ -488,4 +489,21 @@ TEST_CASE("speech hue and time to live follow MessageManager")
     CHECK(text::speechLayoutWidth(fx.fonts, 0, true, shortText) == 0);
     std::u16string longText(80, u'x');
     CHECK(text::speechLayoutWidth(fx.fonts, 0, true, longText) > 0);
+}
+
+TEST_CASE("journal lines, affixes and fonts follow the original")
+{
+    Fixture fx;
+    CHECK(text::journalLine("Brett", "hail") == "Brett: hail");
+    CHECK(text::journalLine(" ", "You see: a sword") == "You see: a sword");
+    CHECK(text::applyAffix("text", " !", false) == "text !");
+    CHECK(text::applyAffix("text", "> ", true) == "> text");
+    CHECK(text::applyAffix("text", "  ", true) == "text");
+
+    CHECK(text::journalFont(false).font == 9);
+    CHECK(text::journalFont(false, true).unicode);
+    CHECK(text::speechFont(2, true, fx.fonts).font == 0);  // unifont2 is not in the fixture
+    CHECK(text::speechFont(0, true, fx.fonts).font == 0);
+    CHECK(text::speechFont(40, false, fx.fonts).font == 3);
+    CHECK(text::speechFont(6, false, fx.fonts).font == 6);
 }
