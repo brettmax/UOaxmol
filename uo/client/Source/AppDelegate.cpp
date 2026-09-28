@@ -10,6 +10,9 @@
 #include "AppDelegate.h"
 #include "GameClient.h"
 #include "scenes/LoginScene.h"
+#include "world/axmol/RenderSmokeScene.h"
+
+#include <cstdlib>
 
 #define USE_VR_RENDERER  0
 #define USE_AUDIO_ENGINE 1
@@ -111,6 +114,21 @@ bool AppDelegate::applicationDidFinishLaunching()
     // Set the design resolution
     renderView->setDesignResolutionSize(designResolutionSize.width, designResolutionSize.height,
                                         ResolutionPolicy::SHOW_ALL);
+
+    // UO_RENDER_SMOKE=<file.png>: draw a generated map with the world renderer, save a
+    // screenshot and quit. Needs no UO data; used to smoke-test rendering in CI.
+    if (const char* smoke = std::getenv("UO_RENDER_SMOKE"); smoke && *smoke)
+    {
+        auto* scene = new uo::render::RenderSmokeScene(smoke);
+        if (!scene->init())
+        {
+            delete scene;
+            return false;
+        }
+        scene->autorelease();
+        director->runWithScene(scene);
+        return true;
+    }
 
     // create a scene. it's an autorelease object
     auto scene = utils::createInstance<LoginScene>();

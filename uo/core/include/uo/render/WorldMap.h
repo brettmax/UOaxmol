@@ -173,10 +173,15 @@ public:
     // ordered list. The block must be loaded. Returns false otherwise.
     bool addObject(WorldObject obj);
 
+    // Removes the object with this serial from tile (x, y). Returns false when
+    // it is not there (or the block is not loaded).
+    bool removeObject(std::uint32_t serial, int x, int y);
+
     // Builds the back-to-front draw list for the view. `out` is cleared.
     void buildDrawList(const ViewParams& view, std::vector<DrawItem>& out) const;
 
     const Cell* cellAt(int x, int y) const;
+    bool isLoaded(int blockX, int blockY) const { return findBlock(blockX, blockY) != nullptr; }
 
 private:
     static uint64_t key(int bx, int by) { return (static_cast<uint64_t>(static_cast<uint32_t>(bx)) << 32) | static_cast<uint32_t>(by); }

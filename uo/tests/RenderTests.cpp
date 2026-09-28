@@ -15,6 +15,7 @@
 #include "uo/render/HueTexture.h"
 #include "uo/render/HueVector.h"
 #include "uo/render/LandStretch.h"
+#include "uo/render/Pick.h"
 #include "uo/render/WorldGeometry.h"
 #include "uo/render/WorldMap.h"
 
@@ -276,6 +277,12 @@ TEST_CASE("priority Z and tile list order match Chunk.AddGameObject")
     WorldObject far;
     far.x = 100, far.y = 100;
     CHECK(!world.addObject(far));
+
+    CHECK(world.removeObject(7, 2, 2));
+    CHECK(cell->size() == 5);
+    CHECK(!world.removeObject(7, 2, 2));
+    CHECK(!world.removeObject(9, 3, 3));
+    CHECK(!world.removeObject(9, 100, 100));
 }
 
 TEST_CASE("static visibility matches GameObject.CanBeDrawn")
@@ -500,3 +507,103 @@ TEST_CASE("geometry places land, stretched land and statics like Batcher2D")
     CHECK(land22.land.offsets.right == 16);
 }
 
+
+namespace
+{
+
+// 20x40 art whose left half is transparent.
+struct FakeArt : IArtHitTest
+{
+    bool itemSize(uint16_t, int& w, int& h) override
+    {
+        w = 20;
+        h = 40;
+        return true;
+    }
+
+    bool itemOpaque(uint16_t, int x, int y) override { return x >= 10 && x < 20 && y >= 0 && y < 40; }
+};
+
+}  // namespace
+
+TEST_CASE("pick returns the topmost object under the point, like SelectedObject")
+{
+    FakeTiles tiles;
+    FakeArt art;
+
+    WorldObject land;
+    land.kind = ObjectKind::Land;
+    land.x = 5;
+    land.y = 5;
+
+    WorldObject item;
+    item.kind   = ObjectKind::Item;
+    item.serial = 0x40000001;
+
+    std::vector<DrawItem> list;
+    list.push_back({DrawType::LandFlat, 3, 100, 100, 0, makeHueVector(0), &land});
+    // Static anchored at the land tile: art origin (100 - (10 - 22), 100 - (40 - 44)) = (112, 104).
+    list.push_back({DrawType::Static, 0x200, 100, 100, 1, makeHueVector(0), &item});
+
+    SUBCASE("opaque art pixel beats the land under it")
+    {
+        const DrawItem* hit = pick(list, tiles, art, 125, 120);
+        REQUIRE(hit);
+        CHECK(hit->object->serial == 0x40000001u);
+    }
+
+    SUBCASE("transparent art pixel falls through to land")
+    {
+        const DrawItem* hit = pick(list, tiles, art, 115, 120);
+        REQUIRE(hit);
+        CHECK(hit->object->kind == ObjectKind::Land);
+    }
+
+    SUBCASE("land is a diamond, not a box")
+    {
+        CHECK(pick(list, tiles, art, 122, 122) != nullptr);
+        CHECK(pick(list, tiles, art, 101, 101) == nullptr);
+        CHECK(pick(list, tiles, art, 142, 142) == nullptr);
+    }
+
+    SUBCASE("shadows and invisible objects are never picked")
+    {
+        list[1].type = DrawType::Shadow;
+        CHECK(pick(list, tiles, art, 125, 120)->object->kind == ObjectKind::Land);
+        list[1].type      = DrawType::Static;
+        list[1].hue.alpha = 0;
+        CHECK(pick(list, tiles, art, 125, 120)->object->kind == ObjectKind::Land);
+    }
+
+    SUBCASE("circle of transparency hides cut statics only inside the circle")
+    {
+        list[1].hue = makeHueVector(0, false, 1.0f, false, false, true);
+        REQUIRE(list[1].hue.alpha > 1.0f);
+        CHECK(pick(list, tiles, art, 125, 120, {125, 120, 10})->object->kind == ObjectKind::Land);
+        CHECK(pick(list, tiles, art, 125, 105, {125, 125, 10})->object->serial == 0x40000001u);
+        CHECK(pick(list, tiles, art, 125, 120)->object->serial == 0x40000001u);
+    }
+}
+
+TEST_CASE("pick follows stretched land corners")
+{
+    FakeTiles tiles;
+    FakeArt art;
+
+    WorldObject land;
+    land.kind                = ObjectKind::Land;
+    land.land.offsets.top    = 20;  // top corner raised 20 px
+    land.land.offsets.right  = 0;
+    land.land.offsets.left   = 0;
+    land.land.offsets.bottom = 0;
+
+    std::vector<DrawItem> list{{DrawType::LandStretched, 3, 0, 0, 0, makeLandHueVector(0, true), &land}};
+
+    CHECK(pick(list, tiles, art, 22, -15) != nullptr);  // inside the raised top
+    CHECK(pick(list, tiles, art, 22, 40) != nullptr);
+    CHECK(pick(list, tiles, art, 2, -10) == nullptr);
+
+    tiles.texmaps = false;  // falls back to flat art raised by z (0 here)
+    CHECK(pick(list, tiles, art, 22, -15) == nullptr);
+    CHECK(pick(list, tiles, art, 22, 22) != nullptr);
+}

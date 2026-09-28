@@ -15,6 +15,7 @@ set(UO_WORLD_SHADERS
 if(TARGET axmol)
   add_library(uo_world_axmol STATIC
     axmol/HueShader.cpp axmol/HueShader.h
+    axmol/RenderSmokeScene.cpp axmol/RenderSmokeScene.h
     axmol/WorldRenderer.cpp axmol/WorldRenderer.h)
   target_link_libraries(uo_world_axmol PUBLIC uocore axmol)
 endif()

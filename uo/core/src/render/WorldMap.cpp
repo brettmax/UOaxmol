@@ -328,6 +328,34 @@ bool WorldMap::addObject(WorldObject obj)
     return true;
 }
 
+bool WorldMap::removeObject(std::uint32_t serial, int x, int y)
+{
+    if (serial == 0 || x < 0 || y < 0)
+    {
+        return false;
+    }
+
+    auto it = _blocks.find(key(x / kBlockSize, y / kBlockSize));
+
+    if (it == _blocks.end())
+    {
+        return false;
+    }
+
+    Cell& cell = it->second.cells[((y % kBlockSize) << 3) + (x % kBlockSize)];
+
+    for (auto o = cell.begin(); o != cell.end(); ++o)
+    {
+        if (o->serial == serial)
+        {
+            cell.erase(o);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out) const
 {
     out.clear();
