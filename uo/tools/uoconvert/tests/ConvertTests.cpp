@@ -17,6 +17,8 @@
 
 #include "TextFixture.h"
 
+#include <vorbis/vorbisfile.h>
+
 #include "doctest.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -707,4 +709,45 @@ TEST_CASE("cliloc: one JSON table per language, enu underneath and Clilocs.txt o
     std::string deuJson = slurp(c.out.path / "data" / "cliloc.deu.json");
     CHECK(deuJson.find("\"1000\":\"ein Schwert\"") != std::string::npos);
     CHECK(deuJson.find("\"3000000\":\"base value\"") != std::string::npos);  // from Cliloc.enu
+}
+
+TEST_CASE("music: MIDI renders to Ogg Vorbis with the client's own soundfont, no external tools")
+{
+    Client c;
+    fs::create_directories(c.dir.path / "MUSIC" / "4mb");
+    c.dir.write("MUSIC/4mb/UO_4MB_2.SF2", sineSoundFont());
+    c.dir.write("MUSIC/Stones2.MID", oneNoteMidi(96));  // half a second
+    c.dir.write("MUSIC/broken.mid", Bytes{'n', 'o', 'p', 'e'});
+
+    REQUIRE(c.run({"music"}) == 0);
+    fs::path ogg = c.out.path / "MUSIC" / "Stones2.ogg";
+    REQUIRE(fs::exists(ogg));
+    CHECK_FALSE(fs::exists(c.out.path / "MUSIC" / "4mb" / "UO_4MB_2.SF2"));  // the bank is not copied
+
+    OggVorbis_File vf;
+    REQUIRE(ov_fopen(ogg.string().c_str(), &vf) == 0);
+    vorbis_info* vi = ov_info(&vf, -1);
+    CHECK(vi->channels == 2);
+    CHECK(vi->rate == 44100);
+    double seconds = ov_time_total(&vf, -1);
+    CHECK(seconds > 0.45);
+    CHECK(seconds < 11.0);
+    float peak = 0;
+    for (;;)
+    {
+        float** pcm = nullptr;
+        int section = 0;
+        long n      = ov_read_float(&vf, &pcm, 4096, &section);
+        if (n <= 0)
+            break;
+        for (long i = 0; i < n; ++i)
+            peak = std::max(peak, std::fabs(pcm[0][i]));
+    }
+    ov_clear(&vf);
+    CHECK(peak > 0.05f);  // the note is audible, not silence
+
+    std::string manifest = slurp(c.out.path / "manifest.json");
+    CHECK(manifest.find("\"renderedMidi\": 1") != std::string::npos);
+    CHECK(manifest.find("\"failedMidi\": 1") != std::string::npos);
+    CHECK(manifest.find("broken.mid: not a readable MIDI file") != std::string::npos);
 }

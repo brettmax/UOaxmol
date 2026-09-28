@@ -26,9 +26,7 @@ struct Options
     std::string outDir;           // converted asset tree
     std::string overridesDir;     // shard's loose Art/, Gumps/ folders; defaults to uoDir
     std::string spineDir;         // Spine exports to validate and copy, optional
-    std::string soundfont;        // General MIDI .sf2 for rendering Music/*.mid
-    std::string fluidsynth = "fluidsynth";
-    std::string oggEncoder;       // "oggenc" or "ffmpeg"; auto-detected when empty
+    std::string soundfont;        // .sf2 for rendering Music/*.mid; defaults to the one under Music/
     // The client version the assets are for: animation and body tables branch on it, exactly as
     // the client's loaders do. Same default as the client's Settings.
     uo::ClientVersion clientVersion = uo::makeVersion(7, 0, 15, 1);
