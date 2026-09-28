@@ -23,10 +23,17 @@ Settings Settings::load()
     auto* fu         = FileUtils::getInstance();
     std::string text = fu->isFileExist(userPath()) ? fu->getStringFromFile(userPath()) : fu->getStringFromFile("settings.json");
 
+    // Notepad and Windows PowerShell save UTF-8 with a byte order mark, which rapidjson rejects.
+    if (text.starts_with("\xEF\xBB\xBF"))
+        text.erase(0, 3);
+
     rapidjson::Document doc;
     doc.Parse(text.c_str());
     if (doc.HasParseError() || !doc.IsObject())
+    {
+        AXLOGW("settings.json is not valid JSON; using defaults");
         return s;
+    }
 
     auto str = [&](const char* key, std::string& out) {
         if (doc.HasMember(key) && doc[key].IsString())
