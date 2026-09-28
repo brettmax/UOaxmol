@@ -607,3 +607,84 @@ TEST_CASE("pick follows stretched land corners")
     CHECK(pick(list, tiles, art, 22, -15) == nullptr);
     CHECK(pick(list, tiles, art, 22, 22) != nullptr);
 }
+
+TEST_CASE("view Z limits follow GameScene.UpdateMaxDrawZ")
+{
+    constexpr uint16_t kRoof = 0x500, kFloor = 0x501, kRoofSurface = 0x502;
+    FakeTiles tiles;
+    tiles.items[kRoof]        = StaticTileData{assets::TF_Roof, 0};
+    tiles.items[kFloor]       = StaticTileData{assets::TF_Surface, 0};
+    tiles.items[kRoofSurface] = StaticTileData{assets::TF_Roof | assets::TF_Surface, 0};
+
+    ViewParams view;
+    view.maxTileX = 23;
+    view.maxTileY = 23;
+
+    SUBCASE("open ground draws everything")
+    {
+        FakeMap map(24, 24);
+        WorldMap world(map, tiles);
+        world.ensureLoaded(view);
+        const ViewZ v = world.computeViewZ(10, 10, 0);
+        CHECK(v.maxZ == 127);
+        CHECK(v.maxGroundZ == 127);
+        CHECK_FALSE(v.hideRoofs);
+        CHECK(world.computeViewZ(10, 10, 0, false).hideRoofs);
+    }
+
+    SUBCASE("a roof in front cuts at the lowest connected roof tile")
+    {
+        FakeMap map(24, 24);
+        map.addStatic(11, 11, 20, kRoof);
+        map.addStatic(12, 11, 17, kRoof);  // connected, within 6 Z
+        map.addStatic(13, 11, 5, kRoof);   // too far below: not part of this roof
+        WorldMap world(map, tiles);
+        world.ensureLoaded(view);
+        const ViewZ v = world.computeViewZ(10, 10, 0);
+        CHECK(v.maxZ == 17);
+        CHECK(v.maxGroundZ == 17);
+        CHECK(v.hideRoofs);
+        CHECK(world.calculateNearZ(20, 11, 11, 20) == 17);
+        CHECK(world.calculateNearZ(20, 1, 1, 20) == 20);
+    }
+
+    SUBCASE("a roof that is also a surface is walked on, not hidden")
+    {
+        FakeMap map(24, 24);
+        map.addStatic(11, 11, 20, kRoofSurface);
+        WorldMap world(map, tiles);
+        world.ensureLoaded(view);
+        CHECK(world.computeViewZ(10, 10, 0).maxZ == 127);
+    }
+
+    SUBCASE("an upper floor over the player hides it and roofs")
+    {
+        FakeMap map(24, 24);
+        map.addStatic(10, 10, 20, kFloor);
+        WorldMap world(map, tiles);
+        world.ensureLoaded(view);
+        const ViewZ v = world.computeViewZ(10, 10, 0);
+        CHECK(v.maxZ == 20);
+        CHECK(v.maxGroundZ == 20);
+        CHECK(v.hideRoofs);
+        // Standing on that floor, nothing is overhead.
+        CHECK(world.computeViewZ(10, 10, 20).maxZ == 127);
+    }
+
+    SUBCASE("ground over the player (a cave) cuts at player Z + 16")
+    {
+        FakeMap map(24, 24);
+        for (int y = 0; y < 24; ++y)
+        {
+            for (int x = 0; x < 24; ++x)
+            {
+                map.setZ(x, y, 30);
+            }
+        }
+        WorldMap world(map, tiles);
+        world.ensureLoaded(view);
+        const ViewZ v = world.computeViewZ(10, 10, 0);
+        CHECK(v.maxZ == 16);
+        CHECK(v.maxGroundZ == 16);
+    }
+}

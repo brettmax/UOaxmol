@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <unordered_set>
 
 namespace uo::render
 {
@@ -294,6 +296,149 @@ const WorldMap::Cell* WorldMap::cellAt(int x, int y) const
 
     const Block* b = findBlock(x / kBlockSize, y / kBlockSize);
     return b ? &b->cells[((y % kBlockSize) << 3) + (x % kBlockSize)] : nullptr;
+}
+
+int WorldMap::calculateNearZ(int defaultZ, int x, int y, int z) const
+{
+    // Map.CalculateNearZ, as a flood fill over roof tiles instead of recursion.
+    struct Step
+    {
+        int x, y, z;
+    };
+    std::vector<Step> todo{{x, y, z}};
+    std::unordered_set<uint64_t> visited;
+
+    while (!todo.empty())
+    {
+        const Step s = todo.back();
+        todo.pop_back();
+
+        if (!visited.insert(key(s.x, s.y)).second)
+        {
+            continue;
+        }
+
+        const Cell* cell = cellAt(s.x, s.y);
+        if (!cell)
+        {
+            continue;
+        }
+
+        const WorldObject* roof = nullptr;
+        for (const WorldObject& obj : *cell)
+        {
+            if (obj.kind != ObjectKind::Static && obj.kind != ObjectKind::Multi)
+            {
+                continue;
+            }
+            if (_tiles.item(obj.graphic).is(assets::TF_Roof) && std::abs(s.z - obj.z) <= 6)
+            {
+                roof = &obj;
+                break;
+            }
+        }
+
+        if (!roof)
+        {
+            continue;
+        }
+
+        defaultZ = std::min<int>(defaultZ, roof->z);
+        todo.push_back({s.x, s.y + 1, roof->z});
+        todo.push_back({s.x, s.y - 1, roof->z});
+        todo.push_back({s.x + 1, s.y, roof->z});
+        todo.push_back({s.x - 1, s.y, roof->z});
+    }
+
+    return defaultZ;
+}
+
+ViewZ WorldMap::computeViewZ(int px, int py, int pz, bool drawRoofs) const
+{
+    // GameScene.UpdateMaxDrawZ.
+    ViewZ v;
+    v.hideRoofs = !drawRoofs;
+
+    const int pz14 = pz + 14;
+    const int pz16 = pz + 16;
+
+    // Anything solid above the player's own tile (land over their head means a cave).
+    if (const Cell* cell = cellAt(px, py))
+    {
+        for (const WorldObject& obj : *cell)
+        {
+            int tileZ = obj.z;
+
+            if (obj.kind == ObjectKind::Land)
+            {
+                if (obj.land.stretched)
+                {
+                    tileZ = obj.land.averageZ;
+                }
+                if (pz16 <= tileZ)
+                {
+                    v.maxGroundZ = pz16;
+                    v.maxZ       = pz16;
+                    break;
+                }
+                continue;
+            }
+
+            if (obj.kind == ObjectKind::Mobile)
+            {
+                continue;
+            }
+
+            if (tileZ > pz14 && v.maxZ > tileZ)
+            {
+                const StaticTileData data = _tiles.item(obj.graphic);
+                // Not transparent or foliage, and a roof only when it is also a surface.
+                if (!data.is(assets::TF_Transparent) && !data.is(assets::TF_Foliage) &&
+                    (!data.is(assets::TF_Roof) || data.is(assets::TF_Surface)))
+                {
+                    v.maxZ      = tileZ;
+                    v.hideRoofs = true;
+                }
+            }
+        }
+    }
+
+    int tempZ    = v.maxZ;
+    v.maxGroundZ = v.maxZ;
+
+    // A roof over the tile in front: the whole connected roof starts the cut.
+    if (const Cell* cell = cellAt(px + 1, py + 1))
+    {
+        for (const WorldObject& obj : *cell)
+        {
+            if (obj.kind == ObjectKind::Mobile || obj.kind == ObjectKind::Land)
+            {
+                continue;
+            }
+
+            const int tileZ = obj.z;
+            if (tileZ > pz14 && v.maxZ > tileZ)
+            {
+                const StaticTileData data = _tiles.item(obj.graphic);
+                if (!data.is(assets::TF_Transparent) && !data.is(assets::TF_Surface) && data.is(assets::TF_Roof))
+                {
+                    v.maxZ       = tileZ;
+                    v.maxGroundZ = calculateNearZ(tileZ, px + 1, py + 1, tileZ);
+                    v.hideRoofs  = true;
+                }
+            }
+        }
+        tempZ = v.maxGroundZ;
+    }
+
+    v.maxZ = v.maxGroundZ;
+    if (tempZ < pz16)
+    {
+        v.maxZ       = pz16;
+        v.maxGroundZ = pz16;
+    }
+    v.maxGroundZ = tempZ;
+    return v;
 }
 
 void WorldMap::ensureLoaded(const ViewParams& view)
