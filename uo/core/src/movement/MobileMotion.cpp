@@ -6,6 +6,7 @@
 #include "uo/movement/Direction.h"
 #include "uo/movement/MovementConstants.h"
 #include "uo/movement/Walker.h"
+#include "uo/world/Entity.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -45,15 +46,44 @@ void pixelOffset(uint8_t dir, float& x, float& y, float framesPerTile)
     }
 }
 
-MotionUpdate advanceMotion(MobileMotion& m, Walker* playerWalker, bool mounted, uint64_t nowMs, int frameDelayMs)
+namespace
+{
+
+MobileStep toStep(const MobileStep& s) { return s; }
+
+MobileStep toStep(const world::MobileStep& s)
+{
+    return {s.x, s.y, s.z, static_cast<uint8_t>(s.direction), s.run};
+}
+
+void place(MobileMotion& m, const MobileStep& s)
+{
+    m.x = s.x;
+    m.y = s.y;
+    m.z = s.z;
+    m.direction = s.direction;
+    m.running = s.run;
+}
+
+void place(world::Mobile& m, const MobileStep& s)
+{
+    m.x = static_cast<uint16_t>(s.x);
+    m.y = static_cast<uint16_t>(s.y);
+    m.z = s.z;
+    m.direction = static_cast<world::Direction>(s.direction);
+    m.isRunning = s.run;
+}
+
+template <class M>
+MotionUpdate advance(M& m, MotionClock& c, Walker* playerWalker, bool mounted, uint64_t nowMs, int frameDelayMs)
 {
     MotionUpdate update;
 
     while (!m.steps.empty())
     {
-        const MobileStep step = m.steps.front();
+        const MobileStep step = toStep(m.steps.front());
 
-        const int delay = static_cast<int>(static_cast<int64_t>(nowMs) - static_cast<int64_t>(m.lastStepTime));
+        const int delay = static_cast<int>(static_cast<int64_t>(nowMs) - static_cast<int64_t>(c.lastStepTime));
         bool stepMounted = mounted;
 
         // Several server moves inside one mounted step interval would teleport the mobile; treat
@@ -71,7 +101,7 @@ MotionUpdate advanceMotion(MobileMotion& m, Walker* playerWalker, bool mounted, 
         {
             bool badStep = false;
 
-            if (m.offsetX == 0 && m.offsetY == 0)
+            if (c.offsetX == 0 && c.offsetY == 0)
             {
                 const int absX = std::abs(m.x - step.x);
                 const int absY = std::abs(m.y - step.y);
@@ -95,10 +125,10 @@ MotionUpdate advanceMotion(MobileMotion& m, Walker* playerWalker, bool mounted, 
                 const float frames = maxDelay / static_cast<float>(kCharacterAnimationDelay);
                 float x = delay / static_cast<float>(kCharacterAnimationDelay);
                 float y = x;
-                m.offsetZ = static_cast<int8_t>((step.z - m.z) * x * (4.0f / frames));
+                c.offsetZ = static_cast<int8_t>((step.z - m.z) * x * (4.0f / frames));
                 pixelOffset(step.direction, x, y, frames);
-                m.offsetX = static_cast<int8_t>(x);
-                m.offsetY = static_cast<int8_t>(y);
+                c.offsetX = static_cast<int8_t>(x);
+                c.offsetY = static_cast<int8_t>(y);
             }
         }
         else
@@ -121,12 +151,8 @@ MotionUpdate advanceMotion(MobileMotion& m, Walker* playerWalker, bool mounted, 
             playerWalker->onStepAnimated();
         }
 
-        m.x = step.x;
-        m.y = step.y;
-        m.z = step.z;
-        m.direction = step.direction;
-        m.running = step.run;
-        m.offsetX = m.offsetY = m.offsetZ = 0;
+        place(m, step);
+        c.offsetX = c.offsetY = c.offsetZ = 0;
         m.steps.pop_front();
         update.stepsCompleted++;
 
@@ -137,11 +163,24 @@ MotionUpdate advanceMotion(MobileMotion& m, Walker* playerWalker, bool mounted, 
         }
 
         update.tileChanged = true;
-        m.lastStepTime = nowMs;
+        c.lastStepTime = nowMs;
         break;
     }
 
     return update;
+}
+
+}  // namespace
+
+MotionUpdate advanceMotion(MobileMotion& m, Walker* playerWalker, bool mounted, uint64_t nowMs, int frameDelayMs)
+{
+    return advance(m, m, playerWalker, mounted, nowMs, frameDelayMs);
+}
+
+MotionUpdate advanceMotion(world::Mobile& m, MotionClock& clock, Walker* playerWalker, bool mounted, uint64_t nowMs,
+                           int frameDelayMs)
+{
+    return advance(m, clock, playerWalker, mounted, nowMs, frameDelayMs);
 }
 
 }  // namespace uo::movement
