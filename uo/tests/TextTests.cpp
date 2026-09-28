@@ -640,7 +640,6 @@ TEST_CASE("cliloc translate follows the original argument rules")
     CHECK(c.format(500000, "Brett\t#1000") == c.translate(500000, "Brett\t#1000"));
 }
 
-#ifdef UO_TEXT_HAS_WORLD_CLILOCS
 TEST_CASE("world cliloc resolver reads through to the cliloc table")
 {
     Fixture fx;
@@ -654,7 +653,6 @@ TEST_CASE("world cliloc resolver reads through to the cliloc table")
     CHECK(resolver.translate(500000, "brett the\t#1002", true) ==
           std::optional<std::string>("You See: Brett The With H\xC3\xA9llo W\xC3\xB6rld"));
 }
-#endif
 
 TEST_CASE("cliloc loads BWT-compressed files")
 {

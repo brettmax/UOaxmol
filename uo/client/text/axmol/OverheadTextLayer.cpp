@@ -50,7 +50,7 @@ void OverheadTextLayer::setViewport(const ax::Rect& viewport)
 }
 
 void OverheadTextLayer::addMessage(std::uint32_t serial, std::string_view utf8, std::uint16_t hue, std::uint8_t font,
-                                   bool unicode, uo::text::MessageType type, uo::text::TextType textType)
+                                   bool unicode, uo::world::MessageType type, uo::world::TextType textType)
 {
     auto& system = TextSystem::instance();
 
@@ -64,10 +64,10 @@ void OverheadTextLayer::addMessage(std::uint32_t serial, std::string_view utf8, 
     style.unicode    = unicode;
     style.border     = true;
     style.maxWidth   = uo::text::speechLayoutWidth(system.fonts(), system.resolveFont(font), unicode, s);
-    style.saveHitMap = textType == uo::text::TextType::Object;
+    style.saveHitMap = textType == uo::world::TextType::Object;
 
     const std::uint16_t fixed = uo::text::fixSpeechHue(hue);
-    style.hue = (!unicode && textType == uo::text::TextType::Object) ? std::uint16_t{0x7FFF} : fixed;
+    style.hue = (!unicode && textType == uo::world::TextType::Object) ? std::uint16_t{0x7FFF} : fixed;
 
     TextLabel* label = TextLabel::create(utf8, style);
 
