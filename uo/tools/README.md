@@ -29,7 +29,7 @@ build/uo/tools/uoconvert/uoconvert --list  # stages
 | `--no-uop`, `--no-verdata` | ignore `*LegacyMUL.uop` / `verdata.mul` |
 | `--new-format`, `--old-format` | force the 7.0.9+ or older tiledata/multi layout (detected from `tiledata.mul` by default) |
 | `--no-radar` | skip the per-map radar PNGs |
-| `--client-version <v>` | client version the data is for (default `7.0.15.1`, as the client's Settings); animation tables and the music folder depend on it |
+| `--client-version <v>` | client version the data is for (default `7.0.15.1`, as the client's Settings); the animation tables depend on it |
 | `--soundfont <sf2>` | General MIDI soundfont; with FluidSynth and `oggenc` or `ffmpeg` on PATH, renders `Music/*.mid` |
 | `--fluidsynth <exe>`, `--ogg-encoder <exe>` | override the tools used for MIDI |
 | `--spine <dir>` | Spine exports to check and copy |
