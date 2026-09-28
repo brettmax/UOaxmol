@@ -12,6 +12,8 @@
 struct Settings
 {
     std::string uoDirectory;
+    // uoconvert's output folder (its --out), if assets were converted. Optional.
+    std::string assetsDirectory;
     uo::ClientVersion clientVersion = uo::makeVersion(7, 0, 15, 1);
     std::string host                = "127.0.0.1";
     std::uint16_t port              = 2593;

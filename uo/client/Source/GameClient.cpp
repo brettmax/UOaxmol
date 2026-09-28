@@ -67,9 +67,10 @@ void GameClient::resetWorld()
 bool GameClient::loadAssets()
 {
     uo::assets::Installation::Options o;
-    o.directory = _settings.uoDirectory;
-    o.version   = _settings.clientVersion;
-    o.maps      = {_settings.map};
+    o.directory       = _settings.uoDirectory;
+    o.assetsDirectory = _settings.assetsDirectory;
+    o.version         = _settings.clientVersion;
+    o.maps            = {_settings.map};
 
     _textures.reset();
     _assetsLoaded = _install.load(o);

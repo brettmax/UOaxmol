@@ -58,7 +58,12 @@ public:
     {
         std::filesystem::path uoPath;  // the UO install directory
 
-        // Clients 4.0.11c and later read Music/Digital/Config.txt; older ones Music/Config.txt.
+        // uoconvert's output root (its --out), if any. Music is looked up in its Music/ first, so
+        // MIDI-only installs play the .ogg renders the converter writes there.
+        std::filesystem::path assetsPath;
+
+        // Kept for callers; music no longer depends on it. Music/Digital/Config.txt is read when
+        // that folder has one, else Music/Config.txt, whatever the version says.
         ClientVersion version = cv::CV_200;
 
         // Prefer soundLegacyMUL.uop when present (a UOP install). Off forces sound.mul.

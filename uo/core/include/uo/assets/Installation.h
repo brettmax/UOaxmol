@@ -27,6 +27,8 @@ public:
     {
         std::string directory;
         ClientVersion version = cv::CV_200;
+        // uoconvert's output root, if converted assets exist; music is found there first.
+        std::string assetsDirectory;
         std::string language  = "enu";
         std::vector<int> maps = {0};
     };
