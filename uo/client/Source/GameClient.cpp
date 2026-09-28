@@ -3,6 +3,8 @@
 
 #include "uo/net/OutgoingPackets.h"
 
+#include <algorithm>
+
 GameClient& GameClient::instance()
 {
     static GameClient client;
@@ -18,10 +20,36 @@ GameClient::GameClient() : _session(_transport, *this)
 
 void GameClient::resetWorld()
 {
+    // Movement and targeting hold references into the old world; drop them first.
+    _targeting.reset();
+    _movement.reset();
+    _tiles.reset();
+
     _world = std::make_unique<uo::world::World>(_settings.clientVersion);
     _world->setListener(this);
     _world->setRequests(this);
     _world->setClilocs(this);
+
+    auto send = [this](std::span<const std::uint8_t> bytes) { _session.send({bytes.begin(), bytes.end()}); };
+
+    _tiles    = std::make_unique<uo::movement::WorldTileSource>(*_world, _install.tileData());
+    _tilesMap = -1;
+    _movement = std::make_unique<uo::movement::MovementSystem>(*_world, *_tiles, send);
+    _movement->install(_handlers);
+
+    uo::world::TargetingHooks hooks;
+    hooks.send              = send;
+    hooks.cancelDoubleClick = [this] {
+        if (cancelDoubleClickHandler)
+            cancelDoubleClickHandler();
+    };
+    _targeting = std::make_unique<uo::world::Targeting>(*_world, std::move(hooks));
+    _targeting->install(_handlers);
+
+    walkHandler = [this](uo::world::Direction dir, bool run) {
+        return _movement->walk(dir, run).kind != uo::movement::WalkResult::Kind::Rejected;
+    };
+    playerTeleportedHandler = [this](uo::world::Player&) { _movement->onPlayerTeleported(); };
 }
 
 bool GameClient::loadAssets()
@@ -79,6 +107,20 @@ void GameClient::update(float dt)
             _session.send(uo::net::out::ping(0));
         }
     }
+}
+
+void GameClient::updateMovement(const std::optional<uo::movement::MovementIntent>& intent, float dt)
+{
+    // The facet can change under the player (0xBF 0x08); statics are cached per facet.
+    const int mapIndex = std::max(0, _world->mapIndex);
+    if (mapIndex != _tilesMap)
+    {
+        _tilesMap = mapIndex;
+        _tiles->setMap(_install.map(mapIndex));
+    }
+
+    _tiles->rebuild();
+    _movement->update(intent, static_cast<int>(dt * 1000.f));
 }
 
 void GameClient::onLoginError(std::string message)

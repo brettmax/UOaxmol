@@ -6,8 +6,10 @@
 #include "render/TextureCache.h"
 
 #include "uo/assets/Installation.h"
+#include "uo/movement/MovementSystem.h"
 #include "uo/net/Session.h"
 #include "uo/world/PacketHandlers.h"
+#include "uo/world/Targeting.h"
 #include "uo/world/World.h"
 
 #include <functional>
@@ -38,6 +40,10 @@ public:
     uo::world::World& world() { return *_world; }
     // Packet dispatch into world(). Other modules (gumps, movement) register hooks here.
     uo::world::PacketHandlers& packetHandlers() { return _handlers; }
+    // Walker, auto-walk and mobile step advance over world(); recreated with it on connect.
+    uo::movement::MovementSystem& movement() { return *_movement; }
+    // The target cursor over world().target; recreated with it on connect.
+    uo::world::Targeting& targeting() { return *_targeting; }
 
     void connect();
     // Drops the connection and GPU resources while the renderer still exists (app exit).
@@ -45,6 +51,9 @@ public:
     bool autoLoginDone = false;
     // Pumps the network. Called every frame by the running scene.
     void update(float dt);
+    // Advances movement one frame: auto-walk, then `intent` (the scene's input), then every
+    // mobile's steps. Called by the world scene after update().
+    void updateMovement(const std::optional<uo::movement::MovementIntent>& intent, float dt);
 
     // Scene hooks (set/cleared by the active scene).
     std::function<void(const std::string&)> errorHandler;
@@ -59,6 +68,8 @@ public:
     std::function<bool(uo::world::Direction, bool run)> walkHandler;
     // Movement: the server moved the player (0x20 / 0xF3); the walker must resync.
     std::function<void(uo::world::Player&)> playerTeleportedHandler;
+    // Targeting: a click was used by the target cursor, so it must not become a double-click.
+    std::function<void()> cancelDoubleClickHandler;
 
     // SessionListener
     void onLoginError(std::string message) override;
@@ -100,5 +111,9 @@ private:
 
     std::unique_ptr<uo::world::World> _world;
     uo::world::PacketHandlers _handlers;
+    std::unique_ptr<uo::movement::WorldTileSource> _tiles;
+    std::unique_ptr<uo::movement::MovementSystem> _movement;
+    std::unique_ptr<uo::world::Targeting> _targeting;
+    int _tilesMap = -1;  // facet _tiles reads, or -1 before one is set
     float _pingTimer = 0;
 };
