@@ -23,7 +23,8 @@ GameClient::GameClient() : _session(_transport, *this)
 
 void GameClient::resetWorld()
 {
-    // Movement and targeting hold references into the old world; drop them first.
+    // Gumps, movement and targeting hold references into the old world; drop them first.
+    _gumps.reset();
     _targeting.reset();
     _movement.reset();
     _tiles.reset();
@@ -49,6 +50,13 @@ void GameClient::resetWorld()
     _targeting = std::make_unique<uo::world::Targeting>(*_world, std::move(hooks));
     _targeting->install(_handlers);
 
+    if (_assetsLoaded)
+    {
+        _gumps = std::make_unique<uo::client::gumps::GumpSystem>(
+            _install, *_world, [this](std::vector<std::uint8_t> bytes) { _session.send(std::move(bytes)); });
+        _gumps->install(_handlers);
+    }
+
     walkHandler = [this](uo::world::Direction dir, bool run) {
         return _movement->walk(dir, run).kind != uo::movement::WalkResult::Kind::Rejected;
     };
@@ -71,6 +79,9 @@ bool GameClient::loadAssets()
         // Missing fonts.mul is not fatal yet: scenes fall back to TTF labels.
         if (!uo::client::text::TextSystem::instance().init(_install))
             AXLOGW("AxmolUO: fonts.mul not found; UO fonts disabled");
+        _audio.shutdown();
+        _audio.initialize(_install.sounds());
+        _audio.setClientVersion(_settings.clientVersion);
     }
     return _assetsLoaded;
 }
@@ -98,6 +109,8 @@ void GameClient::shutdown()
     disconnectedHandler = nullptr;
     if (_session.state() != uo::net::Session::State::Disconnected)
         _session.stop();
+    _gumps.reset();
+    _audio.shutdown();
     uo::client::text::TextSystem::instance().shutdown();
     _textures.reset();
 }
@@ -105,6 +118,7 @@ void GameClient::shutdown()
 void GameClient::update(float dt)
 {
     _transport.poll();
+    _audio.update();
 
     // Keep-alive: ClassicUO pings roughly every 30 seconds once in game.
     if (_session.state() == uo::net::Session::State::InGame)
@@ -183,12 +197,16 @@ void GameClient::onEntityUpdated(uo::world::Entity& e)
 
 void GameClient::onEntityRemoved(uo::world::Serial serial, uo::world::EntityKind)
 {
+    if (_gumps)
+        _gumps->onEntityRemoved(serial);
     if (entityRemovedHandler)
         entityRemovedHandler(serial);
 }
 
 void GameClient::onNameChanged(uo::world::Entity& e)
 {
+    if (_gumps)
+        _gumps->onNameChanged(e);
     if (entityUpdatedHandler)
         entityUpdatedHandler(e);
 }
@@ -203,6 +221,82 @@ void GameClient::onMessage(const uo::world::Message& msg)
 {
     if (messageHandler)
         messageHandler(msg);
+}
+
+void GameClient::onSound(const uo::world::SoundRequest& sound)
+{
+    uo::audio::Listener listener;
+    if (const uo::world::Player* player = _world->player())
+    {
+        listener.inGame = true;
+        listener.x      = player->x;
+        listener.y      = player->y;
+    }
+    _audio.playSoundAt(sound.index, sound.x, sound.y, listener);
+}
+
+void GameClient::onMusic(int index)
+{
+    if (index < 0)
+        _audio.stopMusic();
+    else
+        _audio.playMusic(index);
+}
+
+// --- WorldListener: gumps --------------------------------------------------------------------
+
+void GameClient::onContainerContentsChanged(uo::world::Serial container)
+{
+    if (_gumps)
+        _gumps->onContainerContentsChanged(container);
+}
+
+void GameClient::onEquipmentChanged(uo::world::Serial mobile)
+{
+    if (_gumps)
+        _gumps->onEquipmentChanged(mobile);
+}
+
+void GameClient::onStatsChanged(uo::world::Entity& e)
+{
+    if (_gumps)
+        _gumps->onStatsChanged(e);
+}
+
+void GameClient::onSkillsChanged(int skillIndex, bool openWindow)
+{
+    if (_gumps)
+        _gumps->onSkillsChanged(skillIndex, openWindow);
+}
+
+void GameClient::onOpenContainer(uo::world::Item& container, std::uint16_t gumpGraphic)
+{
+    if (_gumps)
+        _gumps->onOpenContainer(container, gumpGraphic);
+}
+
+void GameClient::onOpenPaperdoll(uo::world::Mobile& mobile, const std::string& title, bool canLift)
+{
+    if (_gumps)
+        _gumps->onOpenPaperdoll(mobile, title, canLift);
+}
+
+void GameClient::onCloseServerGump(uo::world::Serial gumpSerial, std::uint32_t button)
+{
+    if (_gumps)
+        _gumps->onCloseServerGump(gumpSerial, button);
+}
+
+void GameClient::onCloseUi(uo::world::CloseUiKind kind, uo::world::Serial serial)
+{
+    if (_gumps)
+        _gumps->onCloseUi(static_cast<std::uint32_t>(kind), serial);
+}
+
+void GameClient::onDragEnded()
+{
+    if (_gumps)
+        _gumps->onDragEnded();
 }
 
 // --- ServerRequests --------------------------------------------------------------------------

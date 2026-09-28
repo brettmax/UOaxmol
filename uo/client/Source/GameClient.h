@@ -2,6 +2,8 @@
 #pragma once
 
 #include "Settings.h"
+#include "audio/AudioManager.h"
+#include "gumps/GumpSystem.h"
 #include "net/YasioTransport.h"
 #include "render/TextureCache.h"
 
@@ -44,6 +46,10 @@ public:
     uo::movement::MovementSystem& movement() { return *_movement; }
     // The target cursor over world().target; recreated with it on connect.
     uo::world::Targeting& targeting() { return *_targeting; }
+    // Sound effects and music; played from the world's 0x54 / 0x6D events.
+    uo::audio::AudioManager& audio() { return _audio; }
+    // Server and client gumps over world(); recreated with it on connect, null before assets load.
+    uo::client::gumps::GumpSystem* gumps() { return _gumps.get(); }
 
     void connect();
     // Drops the connection and GPU resources while the renderer still exists (app exit).
@@ -86,6 +92,18 @@ public:
     void onNameChanged(uo::world::Entity& e) override;
     void onPlayerTeleported(uo::world::Player& player) override;
     void onMessage(const uo::world::Message& msg) override;
+    void onSound(const uo::world::SoundRequest& sound) override;
+    void onMusic(int index) override;
+    // Forwarded to the gump system.
+    void onContainerContentsChanged(uo::world::Serial container) override;
+    void onEquipmentChanged(uo::world::Serial mobile) override;
+    void onStatsChanged(uo::world::Entity& e) override;
+    void onSkillsChanged(int skillIndex, bool openWindow) override;
+    void onOpenContainer(uo::world::Item& container, std::uint16_t gumpGraphic) override;
+    void onOpenPaperdoll(uo::world::Mobile& mobile, const std::string& title, bool canLift) override;
+    void onCloseServerGump(uo::world::Serial gumpSerial, std::uint32_t button) override;
+    void onCloseUi(uo::world::CloseUiKind kind, uo::world::Serial serial) override;
+    void onDragEnded() override;
 
     // ServerRequests (0xBD is answered by the session)
     void requestMobileStatus(uo::world::Serial serial) override;
@@ -114,6 +132,8 @@ private:
     std::unique_ptr<uo::movement::WorldTileSource> _tiles;
     std::unique_ptr<uo::movement::MovementSystem> _movement;
     std::unique_ptr<uo::world::Targeting> _targeting;
+    std::unique_ptr<uo::client::gumps::GumpSystem> _gumps;
+    uo::audio::AudioManager _audio;
     int _tilesMap = -1;  // facet _tiles reads, or -1 before one is set
     float _pingTimer = 0;
 };
