@@ -62,6 +62,10 @@ def recv_exact(conn, n):
 PLAYER = 0x00000100
 X, Y = 1440, 1690
 
+# Fixed-size client packets the shard reads past: single/double click, status request, war
+# mode, view range.
+IGNORED_FIXED = {0x09: 5, 0x06: 5, 0x34: 10, 0x72: 5, 0xC8: 2}
+
 
 def login_server(conn, port):
     first = recv_exact(conn, 1)
@@ -118,7 +122,11 @@ def game_server(conn):
             elif pid in (0x73,) and len(buf) >= 2:
                 conn.sendall(compress(buf[:2]))
                 buf = buf[2:]
-            elif pid in (0xBD, 0xAD, 0x03) and len(buf) >= 3:
+            elif pid in IGNORED_FIXED and len(buf) >= IGNORED_FIXED[pid]:
+                # Clicks and status requests the client sends on entering the world; without
+                # skipping them the loop stalls and walk requests after them go unconfirmed.
+                buf = buf[IGNORED_FIXED[pid]:]
+            elif pid in (0xBD, 0xAD, 0x03, 0xBF, 0xD7) and len(buf) >= 3:
                 n = struct.unpack(">H", buf[1:3])[0]
                 if len(buf) < n:
                     break
