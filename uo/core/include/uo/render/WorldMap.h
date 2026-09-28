@@ -170,6 +170,14 @@ struct Priority
 
 Priority computePriority(const WorldObject& obj, const ITileData& tiles);
 
+// Result of WorldMap::computeViewZ (GameScene.UpdateMaxDrawZ).
+struct ViewZ
+{
+    int maxZ         = 127;    // ViewParams::maxZ
+    int maxGroundZ   = 127;    // ViewParams::maxGroundZ
+    bool hideRoofs   = false;  // ViewParams::hideRoofs
+};
+
 class WorldMap
 {
 public:
@@ -203,6 +211,16 @@ public:
     // Builds the back-to-front draw list for the view. `out` is cleared. Mobiles are drawn
     // only through a mobile source; without one they are skipped.
     void buildDrawList(const ViewParams& view, std::vector<DrawItem>& out, IMobileDrawSource* mobiles = nullptr) const;
+
+    // Z limits for a player standing at (x, y, z): under a roof or an upper floor, objects
+    // from that height up are hidden and roofs are not drawn; under ground, tiles are cut at
+    // the ground above. Ported from ClassicUO's GameScene.UpdateMaxDrawZ and
+    // Map.CalculateNearZ. drawRoofs = false hides roofs everywhere (the DrawRoofs option).
+    ViewZ computeViewZ(int x, int y, int z, bool drawRoofs = true) const;
+
+    // Lowest roof Z connected to (x, y) through roof tiles within 6 Z of each other
+    // (Map.CalculateNearZ), or defaultZ when there is no roof there.
+    int calculateNearZ(int defaultZ, int x, int y, int z) const;
 
     const Cell* cellAt(int x, int y) const;
     bool isLoaded(int blockX, int blockY) const { return findBlock(blockX, blockY) != nullptr; }

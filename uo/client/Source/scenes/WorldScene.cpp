@@ -668,6 +668,12 @@ void WorldScene::rebuildDrawList()
     view.maxTileY = ((p->y >> 3) + kViewBlocks) * 8 + 7;
     view.playerZ  = p->z;
 
+    // Under a roof or an upper floor, hide what is above the player (ClassicUO UpdateMaxDrawZ).
+    const auto limits = _map->computeViewZ(p->x, p->y, p->z);
+    view.maxZ         = limits.maxZ;
+    view.maxGroundZ   = limits.maxGroundZ;
+    view.hideRoofs    = limits.hideRoofs;
+
     _map->buildDrawList(view, _drawList, _animator.get());
 }
 
