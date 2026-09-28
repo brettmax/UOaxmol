@@ -58,6 +58,14 @@ GumpSystem::GumpSystem(const uo::assets::Installation& assets, uo::world::World&
 
 GumpSystem::~GumpSystem()
 {
+    // The manager node can outlive us in a scene that stays up across a world reset; take it
+    // out so its listeners and gumps stop before the context they reference goes away.
+    if (_manager)
+    {
+        _manager->removeFromParent();
+        _manager = nullptr;
+    }
+
     setItemTileData(nullptr);
     PaperdollGump::hooks().openStatus = nullptr;
     PaperdollGump::hooks().openHealthBar = nullptr;
