@@ -59,9 +59,6 @@ struct WorldObject
     bool canBeTransparent = false;  // eligible for the circle of transparency
     int16_t priorityZ = 0;
     uint32_t serial   = 0;          // 0 for land and statics
-    // Mobiles: pixel offset of the step in progress (ClassicUO GameObject.Offset),
-    // drawn at (x + offsetX, y + offsetY - offsetZ) with y down.
-    int16_t offsetX = 0, offsetY = 0, offsetZ = 0;
     LandStretch land;               // only meaningful for ObjectKind::Land
 };
 
@@ -103,7 +100,6 @@ enum class DrawType : uint8_t
     LandStretched,  // texmap quad, graphic is the land id (texId via tiledata)
     Static,         // item art, graphic is the item id; anchor with staticDrawOrigin
     Shadow,         // flattened item art under a static
-    Mobile,         // animation frame from ITextureSource::mobileFrame; screen pos is the tile's plus the step offset
 };
 
 struct DrawItem

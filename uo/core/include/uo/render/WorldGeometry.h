@@ -47,16 +47,6 @@ public:
     // Item art for a static/item graphic. Implementations resolve animated art
     // (the art index AnimOffset) themselves.
     virtual bool itemArt(uint16_t graphic, TextureRegion& out) = 0;
-
-    // Current animation frame of a mobile (ObjectKind::Mobile), resolved by the
-    // animation system from the object's serial, graphic and direction. center
-    // is the frame's Center (AnimationFrame.CenterX/Y); mirrored is true for the
-    // directions drawn flipped. Default: mobiles are not drawn.
-    virtual bool mobileFrame(const WorldObject& /*mobile*/, TextureRegion& /*out*/, int& /*centerX*/, int& /*centerY*/,
-                             bool& /*mirrored*/)
-    {
-        return false;
-    }
 };
 
 // Consecutive quads that share a texture; one draw call each.
