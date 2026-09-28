@@ -112,7 +112,7 @@ bool runMaps(Context& ctx, JsonWriter& m)
 
         UoMapWriter writer;
         std::string path = ctx.out("maps/map" + i + ".uomap");
-        writer.open(path, h, ctx.opt.mapLevel);
+        writer.open(path, h);
 
         const bool patchable = index == 0;
         std::size_t landPatches = 0, staticPatches = 0, staticCount = 0;

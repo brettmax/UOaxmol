@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #include "UoMap.h"
 
-#include "Png.h"
+#include "uo/io/Compression.h"
 
 #include <algorithm>
 #include <cstring>
 #include <fstream>
-#include <zlib.h>
 
 namespace uoconvert
 {
@@ -90,11 +89,10 @@ bool UoMapChunk::deserialize(const std::uint8_t* d, std::size_t size)
     return true;
 }
 
-bool UoMapWriter::open(const std::string& path, const UoMapHeader& header, int zlibLevel)
+bool UoMapWriter::open(const std::string& path, const UoMapHeader& header)
 {
-    _path  = path;
-    _h     = header;
-    _level = zlibLevel;
+    _path = path;
+    _h    = header;
     _index.assign(static_cast<std::size_t>(_h.chunksX) * _h.chunksY * UoMapHeader::kIndexEntry, 0);
     _body.clear();
     return true;
@@ -106,7 +104,7 @@ bool UoMapWriter::write(std::uint32_t cx, std::uint32_t cy, const UoMapChunk& ch
         return false;
     std::vector<std::uint8_t> raw = chunk.serialize();
     std::vector<std::uint8_t> stored =
-        (_h.flags & UoMapHeader::kFlagZlib) ? deflate(raw.data(), raw.size(), _level) : raw;
+        (_h.flags & UoMapHeader::kFlagZlib) ? uo::io::deflate(raw) : raw;
     std::size_t at = (static_cast<std::size_t>(cy) * _h.chunksX + cx) * UoMapHeader::kIndexEntry;
     std::vector<std::uint8_t> e;
     put64(e, _body.size());  // relative to the body; fixed up in finish()
@@ -181,9 +179,8 @@ bool UoMapReader::read(std::uint32_t cx, std::uint32_t cy, UoMapChunk& out) cons
         return false;
     if (!(_h.flags & UoMapHeader::kFlagZlib))
         return out.deserialize(_file.data() + offset, stored);
-    std::vector<std::uint8_t> raw(rawSize);
-    uLongf size = rawSize;
-    if (uncompress(raw.data(), &size, _file.data() + offset, stored) != Z_OK || size != rawSize)
+    std::vector<std::uint8_t> raw;
+    if (!uo::io::inflate({_file.data() + offset, stored}, raw, rawSize) || raw.size() != rawSize)
         return false;
     return out.deserialize(raw.data(), raw.size());
 }

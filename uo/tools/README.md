@@ -12,7 +12,7 @@ tiledata and multi files in place, so `uoconvert` refuses an output folder insid
 ## Build and run
 
 ```sh
-cmake -S uo -B build/uo -G Ninja          # needs zlib; the tool is skipped with a warning without it
+cmake -S uo -B build/uo -G Ninja
 cmake --build build/uo
 ctest --test-dir build/uo --output-on-failure
 
@@ -26,7 +26,6 @@ build/uo/tools/uoconvert/uoconvert --list  # stages
 | `--overrides <dir>` | the shard's loose `Art/Land`, `Art/Statics`, `Gumps` folders (default: the client folder) |
 | `--jobs <n>` | sheet pages rendered in parallel (default: all cores) |
 | `--max-size <px>` | sheet page edge, default 2048 |
-| `--png-level`, `--map-level` | zlib levels, default 6 |
 | `--no-uop`, `--no-verdata` | ignore `*LegacyMUL.uop` / `verdata.mul` |
 | `--new-format`, `--old-format` | force the 7.0.9+ or older tiledata/multi layout (detected from `tiledata.mul` by default) |
 | `--no-radar` | skip the per-map radar PNGs |
@@ -147,5 +146,5 @@ is copied untouched, since Axmol's AudioEngine plays it.
 | Animations (`anim*.mul`, `AnimationFrame*.uop`) | Owned by the Animations thread; sheet export will call its loader. |
 | Fonts (`fonts.mul`, `unifont*.mul`) | Owned by the Fonts thread; BMFont export will call its loader. Axmol's BMFont reader accepts one page per font. |
 | Cliloc | The client reads `Cliloc.*` through `uo::assets::Cliloc`; a JSON export needs an iteration accessor there. |
-| zlib/BWT-compressed UOP entries (7.0.100+) | Not decoded by `uocore` yet; counted as `compressedSkipped` in the manifest. |
+| BWT-wrapped UOP entries (recent clients) | zlib entries are inflated through `uocore`; BWT is not decoded there yet, so those are counted as `compressedSkipped` in the manifest. |
 | `MultiCollection.uop`, `mapdif*`/`stadif*` | Not decoded by `uocore` yet; T2A data uses `multi.mul` and verdata. |

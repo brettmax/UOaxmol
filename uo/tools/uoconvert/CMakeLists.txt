@@ -1,9 +1,4 @@
 # uoconvert: offline UO data -> Axmol asset converter, built on uocore's format readers.
-find_package(ZLIB)
-if(NOT ZLIB_FOUND)
-  message(WARNING "uoconvert needs zlib (for PNG and .uomap compression); not building it")
-  return()
-endif()
 
 file(GLOB UOCONVERT_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h)
 list(FILTER UOCONVERT_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
@@ -11,7 +6,7 @@ list(FILTER UOCONVERT_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
 add_library(uoconvert_lib STATIC ${UOCONVERT_SOURCES})
 target_include_directories(uoconvert_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(uoconvert_lib SYSTEM PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
-target_link_libraries(uoconvert_lib PUBLIC uocore ZLIB::ZLIB)
+target_link_libraries(uoconvert_lib PUBLIC uocore)
 find_package(Threads REQUIRED)
 target_link_libraries(uoconvert_lib PUBLIC Threads::Threads)
 if(MSVC)

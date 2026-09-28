@@ -10,6 +10,7 @@
 #include "uo/assets/Gumps.h"
 #include "uo/assets/Lights.h"
 #include "uo/assets/Texmaps.h"
+#include "uo/io/Compression.h"
 
 #include "doctest.h"
 
@@ -316,6 +317,30 @@ TEST_CASE("gumps: archive, override and gump.def alias")
     checkBlit(loadPng(g / "gumps-000.png"), rect, expect);
     REQUIRE(findFrame(idx, 3, sheet, rect));
     CHECK(idx.find("\"aliases\":{\"10\":{\"source\":0,\"hue\":5}}") != std::string::npos);
+}
+
+TEST_CASE("gumps: zlib-compressed UOP entries are inflated and carry their own size")
+{
+    Client c;
+    std::vector<std::uint16_t> px = {rgb15(4, 4, 4), 0, 0, rgb15(6, 6, 6)};
+    Bytes raw;
+    le32(raw, 2);
+    le32(raw, 2);
+    Bytes rows = encodeGump(2, 2, px);
+    raw.insert(raw.end(), rows.begin(), rows.end());
+    Bytes packed = uo::io::deflate(raw);
+    c.dir.write("gumpartLegacyMUL.uop",
+                buildUop({{"build/gumpartlegacymul/00000004.tga", packed, static_cast<std::uint32_t>(raw.size()), 1}}));
+
+    REQUIRE(c.run({"gumps"}) == 0);
+    std::string idx = slurp(c.out.path / "gumps" / "gumps.json");
+    int sheet, rect[4];
+    REQUIRE(findFrame(idx, 4, sheet, rect));
+    uo::assets::Image expect{2, 2, {}};
+    for (auto v : px)
+        expect.pixels.push_back(v ? uo::assets::color16To32(v) | uo::assets::kOpaque : 0);
+    checkBlit(loadPng(c.out.path / "gumps" / "gumps-000.png"), rect, expect);
+    CHECK(slurp(c.out.path / "manifest.json").find("compressedSkipped") == std::string::npos);
 }
 
 TEST_CASE("texmaps, lights, hues and data tables")

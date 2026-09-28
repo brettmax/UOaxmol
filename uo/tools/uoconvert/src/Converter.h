@@ -30,8 +30,6 @@ struct Options
     std::string oggEncoder;       // "oggenc" or "ffmpeg"; auto-detected when empty
     int jobs      = 0;            // 0 = hardware threads
     int maxSize   = 2048;
-    int pngLevel  = 6;
-    int mapLevel  = 6;
     bool useUop     = true;
     bool useVerdata = true;
     bool radar      = true;
@@ -42,10 +40,18 @@ struct Options
 // One indexed asset's bytes plus the width/height the index (or a verdata patch) carried.
 struct EntryBytes
 {
+    EntryBytes() = default;
+    EntryBytes(const EntryBytes&)            = delete;  // `bytes` may point into `owned`
+    EntryBytes& operator=(const EntryBytes&) = delete;
+    EntryBytes(EntryBytes&&)                 = default;
+    EntryBytes& operator=(EntryBytes&&)      = default;
+
     std::span<const std::uint8_t> bytes;
     int width  = 0;
     int height = 0;
-    bool compressed = false;  // zlib/BWT UOP entry, not decodable yet
+    bool inflated   = false;  // a zlib UOP entry, inflated into `owned`
+    bool compressed = false;  // BWT-wrapped UOP entry, which uocore cannot decode yet
+    std::vector<std::uint8_t> owned;
 };
 
 class Context

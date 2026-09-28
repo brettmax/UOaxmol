@@ -52,7 +52,6 @@ bool Context::open(std::string& error)
 
     if (opt.jobs <= 0)
         opt.jobs = std::max(1u, std::thread::hardware_concurrency());
-    setPngCompression(opt.pngLevel);
     fs::create_directories(opt.outDir, ec);
     return !ec;
 }
@@ -91,10 +90,22 @@ EntryBytes Context::entry(const uo::io::UOFile* file, std::uint32_t index, int v
     const uo::io::FileIndex* e = file->entry(index);
     if (!e)
         return out;
-    out.bytes      = file->raw(*e);
-    out.width      = e->width;
-    out.height     = e->height;
-    out.compressed = e->compression != uo::io::CompressionType::None;
+    out.width  = e->width;
+    out.height = e->height;
+    if (e->compression == uo::io::CompressionType::None)
+    {
+        out.bytes = file->raw(*e);
+        return out;
+    }
+    bool bwt = false;
+    if (!file->readDecompressed(*e, out.owned, &bwt) || bwt)
+    {
+        out.compressed = true;
+        out.owned.clear();
+        return out;
+    }
+    out.bytes    = out.owned;
+    out.inflated = true;
     return out;
 }
 

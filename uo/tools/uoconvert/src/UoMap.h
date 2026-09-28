@@ -51,7 +51,7 @@ struct UoMapHeader
 class UoMapWriter
 {
 public:
-    bool open(const std::string& path, const UoMapHeader& header, int zlibLevel);
+    bool open(const std::string& path, const UoMapHeader& header);
     // Chunks may be written in any order; each (cx, cy) exactly once.
     bool write(std::uint32_t cx, std::uint32_t cy, const UoMapChunk& chunk);
     bool finish();
@@ -59,7 +59,6 @@ public:
 private:
     std::string _path;
     UoMapHeader _h;
-    int _level = 6;
     std::vector<std::uint8_t> _index;
     std::vector<std::uint8_t> _body;
 };

@@ -6,6 +6,9 @@
 
 #include <cstdint>
 #include <map>
+#include <tuple>
+
+#include "uo/io/UOFile.h"
 #include <string>
 #include <vector>
 
@@ -120,6 +123,37 @@ struct Indexed
         dir.write(idx, index);
     }
 };
+
+// A one-block UOP archive: { name -> (stored bytes, decompressed size, flag) }.
+inline Bytes buildUop(const std::vector<std::tuple<std::string, Bytes, std::uint32_t, std::uint16_t>>& files)
+{
+    Bytes f;
+    le32(f, 0x50594D);
+    le32(f, 5);
+    le32(f, 0xFD23EC43);
+    uotest::le64(f, 40);
+    le32(f, 100);
+    le32(f, static_cast<std::uint32_t>(files.size()));
+    while (f.size() < 40)
+        f.push_back(0);
+    std::size_t dataAt = 40 + 12 + 34 * files.size();
+    le32(f, static_cast<std::uint32_t>(files.size()));
+    uotest::le64(f, 0);
+    for (const auto& [name, stored, dsize, flag] : files)
+    {
+        uotest::le64(f, dataAt);
+        le32(f, 0);
+        le32(f, static_cast<std::uint32_t>(stored.size()));
+        le32(f, dsize);
+        uotest::le64(f, uo::io::UopFile::hash(name));
+        le32(f, 0);
+        le16(f, flag);
+        dataAt += stored.size();
+    }
+    for (const auto& file : files)
+        f.insert(f.end(), std::get<1>(file).begin(), std::get<1>(file).end());
+    return f;
+}
 
 inline std::uint16_t rgb15(int r, int g, int b)
 {

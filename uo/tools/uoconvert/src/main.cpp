@@ -22,8 +22,6 @@ void usage()
         "  --skip a,b,...       skip these stages\n"
         "  --jobs <n>           pages rendered in parallel (default: all cores)\n"
         "  --max-size <px>      sprite-sheet page edge (default 2048)\n"
-        "  --png-level <0-9>    PNG zlib level (default 6)\n"
-        "  --map-level <0-9>    .uomap chunk zlib level (default 6)\n"
         "  --no-uop             ignore *LegacyMUL.uop archives\n"
         "  --no-verdata         ignore verdata.mul\n"
         "  --no-radar           skip the per-map radar PNGs\n"
@@ -68,8 +66,6 @@ int main(int argc, char** argv)
         else if (a == "--skip") o.skip = csv(next());
         else if (a == "--jobs") o.jobs = std::atoi(next());
         else if (a == "--max-size") o.maxSize = std::atoi(next());
-        else if (a == "--png-level") o.pngLevel = std::atoi(next());
-        else if (a == "--map-level") o.mapLevel = std::atoi(next());
         else if (a == "--no-uop") o.useUop = false;
         else if (a == "--no-verdata") o.useVerdata = false;
         else if (a == "--no-radar") o.radar = false;

@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <map>
+#include <tuple>
 
 namespace fs = std::filesystem;
 using uo::assets::Image;
@@ -198,7 +199,9 @@ bool runGumps(Context& ctx, JsonWriter& m)
                 ++compressed;
                 continue;
             }
-            if (!e.bytes.empty())
+            if (e.inflated)
+                std::tie(w, h) = sizeOf(e.bytes);
+            else if (!e.bytes.empty())
                 w = e.width, h = e.height;
         }
         if (w > 0 && h > 0 && w <= 4096 && h <= 4096)
@@ -235,6 +238,8 @@ bool runGumps(Context& ctx, JsonWriter& m)
                     return img;
         }
         EntryBytes e = ctx.entry(file.get(), s.id, Verdata::Gumps);
+        if (e.inflated)  // compressed UOP gumps carry { u32 width; u32 height } ahead of the rows
+            return e.bytes.size() > 8 ? Gumps::decode(e.bytes.subspan(8), s.w, s.h) : Image{};
         return Gumps::decode(e.bytes, e.width, e.height);
     };
 
