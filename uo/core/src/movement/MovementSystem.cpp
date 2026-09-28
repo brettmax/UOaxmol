@@ -21,8 +21,9 @@ namespace uo::movement
 namespace
 {
 
-Direction toMove(world::Direction d) { return static_cast<Direction>(static_cast<uint8_t>(d)); }
-world::Direction toWorld(Direction d) { return static_cast<world::Direction>(static_cast<uint8_t>(d)); }
+// uo::movement::Direction is uo::world::Direction; these keep the call sites readable.
+Direction toMove(world::Direction d) { return d; }
+world::Direction toWorld(Direction d) { return d; }
 
 bool flatNormal(int tile, int top, int right, int bottom, int left)
 {

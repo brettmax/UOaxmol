@@ -22,9 +22,7 @@ inline constexpr uint64_t Surface    = assets::TF_Surface;
 inline constexpr uint64_t Bridge     = assets::TF_Bridge;
 inline constexpr uint64_t Internal   = assets::TF_Internal;
 inline constexpr uint64_t Door       = assets::TF_Door;
-// ClassicUO's TileFlag.NoDiagonal is 0x02000000, the bit uo::assets names TF_HoverOver (gargoyle
-// flight surfaces); assets::TF_NoDiagonal is the next bit up and is not what the client tests.
-inline constexpr uint64_t NoDiagonal = assets::TF_HoverOver;
+inline constexpr uint64_t NoDiagonal = assets::TF_NoDiagonal;
 }  // namespace tile_flag
 
 // How the player moves, which changes what blocks them.

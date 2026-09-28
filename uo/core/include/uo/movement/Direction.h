@@ -3,19 +3,19 @@
 
 #pragma once
 
-#include "uo/game/World.h"
+#include "uo/world/Types.h"
 
 #include <cstdint>
 
 namespace uo::movement
 {
 
-// World directions as the protocol encodes them (uo::game::Direction). North is y-1, which
+// World directions as the protocol encodes them (uo::world::Direction). North is y-1, which
 // draws up and to the right on screen; the names follow ClassicUO.
-using Direction = uo::game::Direction;
+using Direction = uo::world::Direction;
 
 // ClassicUO's Direction.NONE: no direction (no arrow held, or a zero delta).
-inline constexpr Direction kDirectionNone = static_cast<Direction>(0xED);
+inline constexpr Direction kDirectionNone = Direction::None;
 
 constexpr uint8_t toByte(Direction d) { return static_cast<uint8_t>(d); }
 constexpr Direction toDirection(int v) { return static_cast<Direction>(static_cast<uint8_t>(v)); }
