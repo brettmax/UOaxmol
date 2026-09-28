@@ -2,9 +2,6 @@
 // Cliloc lookup for the uo::world packet handlers, over assets::Cliloc.
 #pragma once
 
-// Available once uo::world is in uocore; until then this header is empty.
-#if __has_include("uo/world/Events.h")
-
 #include "uo/assets/Cliloc.h"
 #include "uo/world/Events.h"
 
@@ -12,8 +9,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-
-#define UO_TEXT_HAS_WORLD_CLILOCS 1
 
 namespace uo::text
 {
@@ -44,5 +39,3 @@ private:
 };
 
 }  // namespace uo::text
-
-#endif

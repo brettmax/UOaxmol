@@ -2,6 +2,8 @@
 #include "WorldScene.h"
 
 #include "GameClient.h"
+#include "axmol/JournalView.h"
+#include "axmol/TextSystem.h"
 #include "InputRouter.h"
 #include "LoginScene.h"
 
@@ -70,12 +72,25 @@ bool WorldScene::init()
     auto size   = _director->getVisibleSize();
     auto origin = _director->getVisibleOrigin();
 
-    _journal = Label::createWithTTF("", kFont, 16);
-    _journal->setAnchorPoint(Vec2(0, 0));
-    _journal->setPosition(origin + Vec2(12, 12));
-    _journal->setDimensions(size.width * 0.6f, 0);
-    _journal->enableOutline(Color32::black, 1);
-    addChild(_journal, 10);
+    if (uo::client::text::TextSystem::instance().ready())
+    {
+        _journalView = uo::client::text::JournalView::create(Size(size.width * 0.6f, 160));
+        _journalView->setPosition(origin + Vec2(12, 12));
+        addChild(_journalView, 10);
+    }
+    else
+    {
+        _journal = Label::createWithTTF("", kFont, 16);
+        _journal->setAnchorPoint(Vec2(0, 0));
+        _journal->setPosition(origin + Vec2(12, 12));
+        _journal->setDimensions(size.width * 0.6f, 0);
+        _journal->enableOutline(Color32::black, 1);
+        addChild(_journal, 10);
+    }
+
+    // Gumps sit above the game view and the journal.
+    if (auto* gumps = GameClient::instance().gumps())
+        addChild(gumps->createManager(), 20);
 
     _coords = Label::createWithTTF("", kFont, 14);
     _coords->setAnchorPoint(Vec2(1, 1));
@@ -104,7 +119,7 @@ void WorldScene::onEnter()
 
     gc.entityUpdatedHandler = [this](const uo::world::Entity& e) { syncEntity(e); };
     gc.entityRemovedHandler = [this](uo::world::Serial s) { removeEntity(s); };
-    gc.messageHandler       = [this](const uo::world::Message&) { refreshJournal(); };
+    gc.messageHandler       = [this](const uo::world::Message& m) { appendJournal(m); };
     gc.disconnectedHandler  = [this] { _director->replaceScene(utils::createInstance<LoginScene>()); };
 
     _input->attach(this);
@@ -518,9 +533,36 @@ std::string WorldScene::journalText(const uo::world::Message& j) const
     return text;
 }
 
+void WorldScene::appendJournal(const uo::world::Message& m)
+{
+    if (!_journalView)
+    {
+        refreshJournal();
+        return;
+    }
+    uo::client::text::JournalLine line;
+    std::string text = journalText(m);
+    if (!m.name.empty() && m.serial != 0xFFFFFFFF && m.name != "System")
+    {
+        line.name = m.name;
+        text      = text.substr(m.name.size() + 2);
+    }
+    line.text    = std::move(text);
+    line.hue     = m.hue;
+    line.unicode = m.unicode;
+    _journalView->append(line);
+}
+
 void WorldScene::refreshJournal()
 {
     const auto& journal = GameClient::instance().world().journal();
+    if (_journalView)
+    {
+        _journalView->clearEntries();
+        for (const auto& m : journal)
+            appendJournal(m);
+        return;
+    }
     std::string out;
     std::size_t start = journal.size() > 8 ? journal.size() - 8 : 0;
     for (std::size_t i = start; i < journal.size(); ++i)
