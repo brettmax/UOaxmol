@@ -5,7 +5,7 @@
 
 #include "uo/anim/AnimationCache.h"
 
-#include "renderer/Texture2D.h"
+#include "axmol/renderer/Texture2D.h"
 
 #include <cstdint>
 #include <unordered_map>

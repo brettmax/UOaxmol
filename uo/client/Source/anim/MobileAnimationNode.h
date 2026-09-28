@@ -7,8 +7,8 @@
 
 #include "uo/anim/MobileRenderer.h"
 
-#include "scene/Node.h"
-#include "2d/Sprite.h"
+#include "axmol/scene/Node.h"
+#include "axmol/2d/Sprite.h"
 
 #include <functional>
 #include <vector>
