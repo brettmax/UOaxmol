@@ -20,6 +20,7 @@
 namespace uo::client::text
 {
 class JournalView;
+class OverheadTextLayer;
 }
 
 namespace uo::client::input
@@ -77,8 +78,14 @@ private:
     void removeEntity(std::uint32_t serial);
     void centerCamera();
     void refreshJournal();
+    // A message's text with cliloc fallback applied, without the speaker's name.
+    std::string messageText(const uo::world::Message& m) const;
     std::string journalText(const uo::world::Message& m) const;
     void appendJournal(const uo::world::Message& m);
+    // Speech and labels over the mobile or ground item that sent them (MessageManager).
+    void showOverhead(const uo::world::Message& m);
+    // Where an entity's overhead text stacks from, in UO screen pixels (top-left origin).
+    std::optional<ax::Vec2> overheadAnchor(std::uint32_t serial) const;
 
     // Draw position of a mobile this frame: its tile plus the step it is part-way through.
     ax::Vec2 mobilePosition(const uo::world::Entity& e) const;
@@ -99,6 +106,7 @@ private:
     ax::Node* _worldNode = nullptr;
     ax::Label* _journal  = nullptr;  // TTF fallback when UO fonts are missing
     uo::client::text::JournalView* _journalView = nullptr;
+    uo::client::text::OverheadTextLayer* _overhead = nullptr;  // null without UO fonts
     ax::Label* _coords   = nullptr;
     std::unique_ptr<uo::client::input::InputRouter> _input;
 
