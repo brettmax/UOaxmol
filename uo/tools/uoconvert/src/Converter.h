@@ -5,6 +5,7 @@
 #include "DataDir.h"
 #include "Json.h"
 
+#include "uo/io/ClientVersion.h"
 #include "uo/io/UOFile.h"
 #include "uo/io/Verdata.h"
 
@@ -28,6 +29,9 @@ struct Options
     std::string soundfont;        // General MIDI .sf2 for rendering Music/*.mid
     std::string fluidsynth = "fluidsynth";
     std::string oggEncoder;       // "oggenc" or "ffmpeg"; auto-detected when empty
+    // The client version the assets are for: animation and body tables branch on it, exactly as
+    // the client's loaders do. Same default as the client's Settings.
+    uo::ClientVersion clientVersion = uo::makeVersion(7, 0, 15, 1);
     int jobs      = 0;            // 0 = hardware threads
     int maxSize   = 2048;
     bool useUop     = true;
@@ -49,8 +53,8 @@ struct EntryBytes
     std::span<const std::uint8_t> bytes;
     int width  = 0;
     int height = 0;
-    bool inflated   = false;  // a zlib UOP entry, inflated into `owned`
-    bool compressed = false;  // BWT-wrapped UOP entry, which uocore cannot decode yet
+    bool inflated   = false;  // a zlib (or zlib + BWT) UOP entry, decoded into `owned`
+    bool compressed = false;  // a compressed entry that failed to decode
     std::vector<std::uint8_t> owned;
 };
 

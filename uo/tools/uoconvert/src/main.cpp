@@ -29,6 +29,7 @@ void usage()
         "  --soundfont <sf2>    General MIDI soundfont for rendering Music/*.mid to Ogg\n"
         "  --fluidsynth <exe>   FluidSynth binary (default: fluidsynth)\n"
         "  --ogg-encoder <exe>  oggenc or ffmpeg (default: whichever is on PATH)\n"
+        "  --client-version <v> version the assets are for, e.g. 7.0.15.1 (the default) or 2.0.0\n"
         "  --spine <dir>        Spine exports to validate and copy into spine/\n"
         "  --list               list the stages and exit\n");
 }
@@ -75,6 +76,16 @@ int main(int argc, char** argv)
         else if (a == "--fluidsynth") o.fluidsynth = next();
         else if (a == "--ogg-encoder") o.oggEncoder = next();
         else if (a == "--spine") o.spineDir = next();
+        else if (a == "--client-version")
+        {
+            auto v = uo::parseClientVersion(next());
+            if (!v)
+            {
+                std::fprintf(stderr, "uoconvert: --client-version needs a version like 7.0.15.1\n");
+                return 2;
+            }
+            o.clientVersion = *v;
+        }
         else if (a == "--list")
         {
             for (const auto& s : uoconvert::stages())

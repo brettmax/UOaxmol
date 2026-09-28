@@ -2,8 +2,8 @@
 
 `uoconvert` reads an Ultima Online client folder (The Second Age era or later, MUL or UOP) and
 writes an asset tree in formats Axmol loads natively: sprite sheets as PNG plus TexturePacker
-format-3 `.plist` for `ax::SpriteFrameCache`, JSON data tables, chunked map files and Ogg
-music. It is built on `uocore`: every UO format is decoded by the same code the client runs,
+format-3 `.plist` for `ax::SpriteFrameCache`, BMFont fonts, WAV sound effects, JSON data
+tables, chunked map files and Ogg music. It is built on `uocore`: every UO format is decoded by the same code the client runs,
 and the converter only chooses what to export and how to lay it out.
 
 The source folder is only read. The ModernUO server reads the original map, statics,
@@ -29,6 +29,7 @@ build/uo/tools/uoconvert/uoconvert --list  # stages
 | `--no-uop`, `--no-verdata` | ignore `*LegacyMUL.uop` / `verdata.mul` |
 | `--new-format`, `--old-format` | force the 7.0.9+ or older tiledata/multi layout (detected from `tiledata.mul` by default) |
 | `--no-radar` | skip the per-map radar PNGs |
+| `--client-version <v>` | client version the data is for (default `7.0.15.1`, as the client's Settings); the animation tables depend on it |
 | `--soundfont <sf2>` | General MIDI soundfont; with FluidSynth and `oggenc` or `ffmpeg` on PATH, renders `Music/*.mid` |
 | `--fluidsynth <exe>`, `--ogg-encoder <exe>` | override the tools used for MIDI |
 | `--spine <dir>` | Spine exports to check and copy |
@@ -54,11 +55,25 @@ build/uo/tools/uoconvert/uoconvert --list  # stages
     map<N>.uomap               chunked land + statics (below)
     map<N>.json                width, height, chunk grid, static count
     map<N>-radar.png           one pixel per tile, radarcol colours
+  anims/
+    anims.json                 body -> {index, type, uop, file, flags, actions, frames}
+    0x00C8.json                one body's index: frames by (action << 16 | dir << 8 | frame)
+    0x00C8-NNN.png / .plist    frames "anim/0x00C8/<action>/<dir>/<frame>", anchored at the feet
+  fonts/
+    fonts.json                 [{name, kind, index, fnt, lineHeight}]
+    ascii<N>.fnt / .png        fonts.mul font N, characters 32..255, original colours
+    unifont<N>.fnt / .png      unifont<N>.mul, every glyph the file has, white (tint with setTextColor)
+  sounds/
+    <id>.wav                   archive PCM (22,050 Hz mono 16-bit) with a WAV header
+    <id>.<ext>                 a loose Sounds/<id>.* override from the client folder, copied
+    sounds.json                id -> {file, name, delay}; delay is the replay throttle in ms
   data/
     tiledata.json              land [flags, texId, name]; statics [flags, weight, layer, count,
                                animId, hue, lightIndex, height, name]
     multis.json                multi id -> [[graphic, x, y, z, flags], ...]
     animdata.json              graphic -> [[frame offsets], frameInterval, frameStart]
+    cliloc.<lang>.json         number -> text (UTF-8) per Cliloc.<lang>, with Cliloc.enu under
+                               other languages and the shard's Clilocs.txt on top, as the client loads them
   Music/                       mirrors the client's Music/ folder
     **/*.mp3, Config.txt       copied as is
     **/<name>.ogg              rendered from <name>.mid (44.1 kHz stereo Ogg Vorbis)
@@ -87,6 +102,26 @@ used area, rounded up to a multiple of 4 so they can later be ASTC/ETC2 4x4 comp
 - Loose shard files (`Art/Land/<id>.art`, `Art/Statics/<id>.art`, `Gumps/<id>.gump`, as
   ModernUO-Client reads them) win over the archives, and `verdata.mul` patches are applied,
   exactly as the client applies them.
+
+### Animations
+
+Each body with frames gets its own sheets (`anims/0x00C8-000.png`), so the client loads a
+body's frames when the first mobile using it appears. Frames are stored for the five directions
+the files hold (0 to 4); the client mirrors them for 5 to 7, as ClassicUO does. Every frame
+carries its `center` and an Axmol `anchor` placing the mobile's feet: ClassicUO draws a frame at
+`(x - centerX, y - centerY - height)`, which is anchor `(centerX / w, -centerY / h)`.
+
+Bodies are exported as stored in `anim*.mul` (with `verdata.mul` patches) or
+`AnimationFrame*.uop`. `Body.def`, `Bodyconv.def` (which depends on the server's expansion
+flags), `Corpse.def` and `mobtypes.txt` stay runtime lookups through `uo::anim::AnimationsLoader`.
+
+### Fonts
+
+Glyphs are drawn by `uo::text::FontRenderer` one character at a time, then trimmed, so
+`xoffset`, `yoffset` and `xadvance` reproduce the client's own baseline and spacing. Each font is
+one page (Axmol's BMFont reader takes one) of at most `max(--max-size, 4096)` pixels; glyphs that
+do not fit are dropped with a warning. The client's gump and journal text keeps rendering through
+`FontRenderer` for exact wrapping and hues; the BMFont files are for plain Axmol `Label`s.
 
 ### Hues
 
@@ -142,9 +177,4 @@ is copied untouched, since Axmol's AudioEngine plays it.
 
 | Data | Why |
 |---|---|
-| Sound effects | Read at runtime by `uo::sound::SoundLoader` (Audio thread); WAV export will reuse it once it lands on this branch. |
-| Animations (`anim*.mul`, `AnimationFrame*.uop`) | Owned by the Animations thread; sheet export will call its loader. |
-| Fonts (`fonts.mul`, `unifont*.mul`) | Owned by the Fonts thread; BMFont export will call its loader. Axmol's BMFont reader accepts one page per font. |
-| Cliloc | The client reads `Cliloc.*` through `uo::assets::Cliloc`; a JSON export needs an iteration accessor there. |
-| BWT-wrapped UOP entries (recent clients) | zlib entries are inflated through `uocore`; BWT is not decoded there yet, so those are counted as `compressedSkipped` in the manifest. |
 | `MultiCollection.uop`, `mapdif*`/`stadif*` | Not decoded by `uocore` yet; T2A data uses `multi.mul` and verdata. |

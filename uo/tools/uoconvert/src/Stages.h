@@ -15,6 +15,10 @@ bool runLights(Context& ctx, JsonWriter& m);
 bool runMaps(Context& ctx, JsonWriter& m);
 bool runMultis(Context& ctx, JsonWriter& m);
 bool runAnimData(Context& ctx, JsonWriter& m);
+bool runCliloc(Context& ctx, JsonWriter& m);
+bool runSounds(Context& ctx, JsonWriter& m);
+bool runAnims(Context& ctx, JsonWriter& m);
+bool runFonts(Context& ctx, JsonWriter& m);
 bool runMusic(Context& ctx, JsonWriter& m);
 bool runSpine(Context& ctx, JsonWriter& m);
 
