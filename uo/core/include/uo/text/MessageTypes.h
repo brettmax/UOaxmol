@@ -5,6 +5,20 @@
 
 #include <cstdint>
 
+// Once the uo::world game state is in uocore these are its types, so world messages pass
+// straight through; until then the same enums are defined here. Remove this header when
+// uo/world is on every branch that uses it.
+#if __has_include("uo/world/Types.h")
+#include "uo/world/Types.h"
+
+namespace uo::text
+{
+using world::MessageType;
+using world::TextType;
+}  // namespace uo::text
+
+#else
+
 namespace uo::text
 {
 
@@ -38,3 +52,5 @@ enum class TextType : uint8_t
 };
 
 }  // namespace uo::text
+
+#endif

@@ -9,6 +9,7 @@
 #include "uo/text/JournalText.h"
 #include "uo/text/SpeechText.h"
 #include "uo/text/Utf.h"
+#include "uo/text/WorldClilocs.h"
 
 #include <cstdio>
 #include <sstream>
@@ -429,6 +430,22 @@ TEST_CASE("cliloc translate follows the original argument rules")
     CHECK(c.getString(424242, "fallback") == "fallback");
     CHECK(c.format(500000, "Brett\t#1000") == c.translate(500000, "Brett\t#1000"));
 }
+
+#ifdef UO_TEXT_HAS_WORLD_CLILOCS
+TEST_CASE("world cliloc resolver reads through to the cliloc table")
+{
+    Fixture fx;
+    text::WorldClilocs r(fx.cliloc);
+    world::ClilocResolver& resolver = r;
+
+    CHECK(resolver.get(1000) == "a sword");
+    CHECK(resolver.get(999999).empty());
+    CHECK(resolver.translate(500000, "Brett\t#1000", false) == std::optional<std::string>("You see: Brett with a sword"));
+    CHECK(resolver.translate(999999, "", false) == std::optional<std::string>("MegaCliloc: missing 999999 [] []"));
+    CHECK(resolver.translate(500000, "brett the\t#1002", true) ==
+          std::optional<std::string>("You See: Brett The With H\xC3\xA9llo W\xC3\xB6rld"));
+}
+#endif
 
 TEST_CASE("cliloc loads BWT-compressed files")
 {
