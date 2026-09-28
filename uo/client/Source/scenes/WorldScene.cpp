@@ -3,6 +3,7 @@
 
 #include "GameClient.h"
 #include "axmol/JournalView.h"
+#include "axmol/OverheadTextLayer.h"
 #include "axmol/TextSystem.h"
 #include "InputRouter.h"
 #include "LoginScene.h"
@@ -12,6 +13,7 @@
 
 #include "uo/net/OutgoingPackets.h"
 #include "uo/render/HueTexture.h"
+#include "uo/text/JournalText.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,6 +27,9 @@ namespace
 {
 constexpr const char* kFont = "fonts/arial.ttf";
 constexpr float kPickRadius = 24.f;  // how far from an entity's marker a click still picks it
+// Overhead text starts above the placeholder mobile's name label; with animated mobiles this
+// becomes the frame height, as in ClassicUO's Mobile.UpdateTextCoordsV.
+constexpr float kMobileTextHeight = 72.f;
 
 // The map the world is on; the world reports -1 until 0x1B / 0xBF 0x08 set it.
 int currentMap()
@@ -160,6 +165,14 @@ bool WorldScene::init()
 
     if (uo::client::text::TextSystem::instance().ready())
     {
+        // Speech over heads, between the world and the journal. It covers the visible area,
+        // which is the game viewport until the client has a resizable one.
+        _overhead = uo::client::text::OverheadTextLayer::create();
+        _overhead->setViewport(Rect(0, 0, size.width, size.height));
+        _overhead->setPosition(origin);
+        _overhead->setAnchorProvider([this](std::uint32_t serial) { return overheadAnchor(serial); });
+        addChild(_overhead, 5);
+
         _journalView = uo::client::text::JournalView::create(Size(size.width * 0.6f, 160));
         _journalView->setPosition(origin + Vec2(12, 12));
         addChild(_journalView, 10);
@@ -205,7 +218,10 @@ void WorldScene::onEnter()
 
     gc.entityUpdatedHandler = [this](const uo::world::Entity& e) { syncEntity(e); };
     gc.entityRemovedHandler = [this](uo::world::Serial s) { removeEntity(s); };
-    gc.messageHandler       = [this](const uo::world::Message& m) { appendJournal(m); };
+    gc.messageHandler       = [this](const uo::world::Message& m) {
+        appendJournal(m);
+        showOverhead(m);
+    };
     gc.disconnectedHandler  = [this] { _director->replaceScene(utils::createInstance<LoginScene>()); };
 
     _input->attach(this);
@@ -687,9 +703,11 @@ void WorldScene::removeEntity(std::uint32_t serial)
         it->second->removeFromParent();
         _entities.erase(it);
     }
+    if (_overhead)
+        _overhead->removeOwner(serial);
 }
 
-std::string WorldScene::journalText(const uo::world::Message& j) const
+std::string WorldScene::messageText(const uo::world::Message& j) const
 {
     // Cliloc messages arrive translated when GameClient's resolver had the table; otherwise
     // they carry the number and arguments.
@@ -700,6 +718,12 @@ std::string WorldScene::journalText(const uo::world::Message& j) const
         if (!j.affix.empty())
             text = j.affixPrepend ? j.affix + text : text + j.affix;
     }
+    return text;
+}
+
+std::string WorldScene::journalText(const uo::world::Message& j) const
+{
+    std::string text = messageText(j);
     if (!j.name.empty() && j.serial != 0xFFFFFFFF && j.name != "System")
         return j.name + ": " + text;
     return text;
@@ -743,4 +767,67 @@ void WorldScene::refreshJournal()
         out += '\n';
     }
     _journal->setString(out);
+}
+
+void WorldScene::showOverhead(const uo::world::Message& m)
+{
+    using uo::world::MessageType;
+
+    if (!_overhead || m.serial == 0 || m.serial == 0xFFFFFFFF)
+        return;
+
+    // What ClassicUO puts over an object; guild, alliance, party, command and system text
+    // stays in the journal.
+    switch (m.type)
+    {
+    case MessageType::Regular:
+    case MessageType::Emote:
+    case MessageType::Label:
+    case MessageType::Focus:
+    case MessageType::Whisper:
+    case MessageType::Yell:
+    case MessageType::Spell:
+    case MessageType::Limit3Spell:
+    case MessageType::Encoded:
+        break;
+    default:
+        return;
+    }
+
+    if (!GameClient::instance().world().get(m.serial))
+        return;
+
+    const std::string text = messageText(m);
+    const auto font = uo::text::speechFont(m.font, m.unicode, uo::client::text::TextSystem::instance().fonts());
+    _overhead->addMessage(m.serial, text, m.hue, font.font, font.unicode, m.type, m.textType);
+}
+
+std::optional<Vec2> WorldScene::overheadAnchor(std::uint32_t serial) const
+{
+    auto& gc      = GameClient::instance();
+    const auto* e = gc.world().get(serial);
+    if (!e)
+        return std::nullopt;
+
+    Vec2 local;
+    if (e->isMobile())
+    {
+        local = mobilePosition(*e) + Vec2(0, kMobileTextHeight);
+    }
+    else
+    {
+        const auto* item = static_cast<const uo::world::Item*>(e);
+        if (!item->onGround())
+            return std::nullopt;
+        // Ground items stand on the tile centre (see syncEntity); text starts at the art's top.
+        float height = 44.f;
+        if (Texture2D* tex = gc.textures().statik(e->graphic))
+            height = tex->getContentSize().height;
+        local = tileToWorld(e->x, e->y, e->z) + Vec2(0, height - 22.f);
+    }
+
+    const Vec2 world  = _worldNode->convertToWorldSpace(local);
+    const auto size   = _director->getVisibleSize();
+    const auto origin = _director->getVisibleOrigin();
+    return Vec2(world.x - origin.x, size.height - (world.y - origin.y));
 }

@@ -31,7 +31,7 @@ public:
     bool init(const assets::Installation& installation);
     void shutdown();
 
-    // True once init() has loaded fonts.mul; without it there are no glyphs to draw.
+    // True once init() loaded fonts.mul and unifont.mul; UO-font views need both.
     bool ready() const { return _installation != nullptr && _fontsLoaded; }
 
     const uo::text::FontRenderer& fonts() const { return _fonts; }
@@ -47,10 +47,10 @@ private:
     TextSystem() = default;
 
     uo::text::FontRenderer _fonts;
+    bool _fontsLoaded = false;
     std::unique_ptr<uo::text::HuesResolver> _hues;
     const assets::Installation* _installation = nullptr;
     std::uint8_t _defaultFont = 1;
-    bool _fontsLoaded         = false;
 };
 
 }  // namespace uo::client::text
