@@ -118,7 +118,7 @@ std::u16string utf8ToUtf16(std::string_view s)
         }
         else
         {
-            out += u'�';
+            out += u'\uFFFD';
             ++i;
             continue;
         }
@@ -126,7 +126,7 @@ std::u16string utf8ToUtf16(std::string_view s)
         if (i + extra >= s.size())
         {
             // Truncated sequence at the end of the string.
-            out += u'�';
+            out += u'\uFFFD';
             break;
         }
 
@@ -147,7 +147,7 @@ std::u16string utf8ToUtf16(std::string_view s)
 
         if (bad)
         {
-            out += u'�';
+            out += u'\uFFFD';
             ++i;
             continue;
         }

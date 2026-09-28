@@ -30,8 +30,9 @@ public:
     void send(std::vector<std::uint8_t> bytes) override;
     void disconnect() override;
 
-    // Delivers queued network events. Call once per frame.
-    void poll();
+    // Delivers queued network events. Call once per frame. Not named poll(): on Windows yasio's
+    // socket headers `#define poll WSAPoll`, which renames the method in some files only.
+    void pumpEvents();
     // Stops the io_service thread. Idempotent; must run before static destruction, where
     // yasio's own globals may already be gone (GameClient::shutdown calls it).
     void shutdown();

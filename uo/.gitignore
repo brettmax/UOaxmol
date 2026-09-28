@@ -1,2 +1,5 @@
 # The engine root ignores every assets/ directory; ours holds source code.
 !assets/
+# Written into the project by Axmol's Windows configure step (machine-specific paths).
+client/run.bat
+client/run.bat.txt
