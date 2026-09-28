@@ -4,6 +4,7 @@
 // handlers whose ClassicUO versions open gumps. Here they update state and notify the
 // WorldListener; the Axmol UI decides what to show.
 #include "PacketHandlersInternal.h"
+#include "uo/io/Compression.h"
 #include "uo/world/PacketHandlers.h"
 
 #include <algorithm>
@@ -170,13 +171,21 @@ void PacketHandlers::displayClilocString(PacketHandlers&, World& world, BinaryRe
     if (const size_t remains = r.remaining(); remains > 0)
         arguments = isAffix ? detail::unicodeBE(r, int(remains / 2)) : detail::unicodeLE(r, int(remains / 2));
 
-    auto text = detail::translate(world, msg.cliloc, arguments, false);
-    if (!text)
-        return;
-    msg.text = std::move(*text);
+    msg.clilocArgs = arguments;
+    msg.affix = affix;
+    msg.affixPrepend = (affixFlags & kPrepend) != 0;
 
-    if (!affix.empty() && affix.find_first_not_of(" \t\r\n") != std::string::npos)
-        msg.text = (affixFlags & kPrepend) ? affix + msg.text : msg.text + affix;
+    // With a resolver the text is ready to show; without one the text layer resolves it later.
+    if (ClilocResolver* clilocs = world.clilocs())
+    {
+        auto text = clilocs->translate(msg.cliloc, arguments, false);
+        if (!text)
+            return;
+        msg.text = std::move(*text);
+
+        if (!affix.empty() && affix.find_first_not_of(" \t\r\n") != std::string::npos)
+            msg.text = msg.affixPrepend ? affix + msg.text : msg.text + affix;
+    }
 
     if (affixFlags & kSystem)
         msg.type = MessageType::System;
@@ -208,7 +217,7 @@ void PacketHandlers::asciiPrompt(PacketHandlers&, World& world, BinaryReader& r)
 {
     if (!world.inGame())
         return;
-    world.prompt = {PromptKind::ASCII, detail::u64be(r)};
+    world.prompt = {PromptKind::ASCII, r.readU64BE()};
     world.listener().onPromptChanged(world.prompt);
 }
 
@@ -216,7 +225,7 @@ void PacketHandlers::unicodePrompt(PacketHandlers&, World& world, BinaryReader& 
 {
     if (!world.inGame())
         return;
-    world.prompt = {PromptKind::Unicode, detail::u64be(r)};
+    world.prompt = {PromptKind::Unicode, r.readU64BE()};
     world.listener().onPromptChanged(world.prompt);
 }
 
@@ -1630,7 +1639,7 @@ void PacketHandlers::customHouse(PacketHandlers&, World& world, BinaryReader& r)
     Item* foundation = world.item(serial);
     const uint32_t revision = r.readU32BE();
 
-    if (!foundation || !foundation->isMulti || !world.multiBounds || !world.inflate)
+    if (!foundation || !foundation->isMulti || !world.multiBounds)
         return;
 
     const auto bounds = world.multiBounds(foundation->graphic);
@@ -1664,9 +1673,10 @@ void PacketHandlers::customHouse(PacketHandlers&, World& world, BinaryReader& r)
         auto compressed = r.rest().first(std::min(clen, r.remaining()));
         r.skip(clen);
 
-        buffer.assign(dlen, 0);
-        if (!world.inflate(compressed, buffer))
+        buffer.clear();
+        if (!io::inflate(compressed, buffer, dlen))
             continue;
+        buffer.resize(dlen); // planes are read by their declared size
 
         BinaryReader d(buffer);
         const auto planeHeight = int8_t(planeZ > 0 ? ((planeZ - 1) % 4) * 20 + 7 : 0);

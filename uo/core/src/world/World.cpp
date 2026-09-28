@@ -401,9 +401,10 @@ void World::removeCorpse(Serial corpse, Serial owner)
 
 void World::addMessage(Message msg)
 {
-    if (msg.text.empty())
+    // Cliloc messages may arrive untranslated (no resolver): they carry the number instead.
+    if (msg.text.empty() && msg.cliloc == 0)
         return;
-    _journal.push_back(msg);
+    _journal.push_back(std::move(msg));
     while (_journal.size() > kJournalLimit)
         _journal.pop_front();
     _listener->onMessage(_journal.back());

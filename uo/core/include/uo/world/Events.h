@@ -45,6 +45,11 @@ struct Message
     TextType textType{TextType::System};
     bool unicode{false};
     uint32_t cliloc{0};       // 0xC1/0xCC/0xBF 0x10 source cliloc, when any
+    // 0xC1/0xCC: raw arguments (tab-separated) and affix. Without a ClilocResolver `text` stays
+    // empty and the text layer resolves cliloc + clilocArgs + affix itself.
+    std::string clilocArgs;
+    std::string affix;        // 0xCC only
+    bool affixPrepend{false}; // 0xCC only
 };
 
 struct Effect
