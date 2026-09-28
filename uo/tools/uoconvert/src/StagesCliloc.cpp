@@ -22,11 +22,25 @@ bool runCliloc(Context& ctx, JsonWriter& m)
         if (lower.find('/') == std::string::npos && lower.rfind("cliloc.", 0) == 0 && lower.size() > 7)
             langs.emplace_back(lower.substr(7), (fs::path(ctx.data.root()) / rel).string());
     }
+    // 1.x clients predate Cliloc.enu; their system messages (500000 up) are in cliloc-1.<lang>.
+    bool legacy = false;
     if (langs.empty())
     {
-        m.field("skipped", "no Cliloc.* files");
+        for (const std::string& rel : ctx.data.list("", ""))
+        {
+            std::string lower = toLower(rel);
+            if (lower.find('/') == std::string::npos && lower.rfind("cliloc-1.", 0) == 0 && lower.size() > 9)
+                langs.emplace_back(lower.substr(9), (fs::path(ctx.data.root()) / rel).string());
+        }
+        legacy = !langs.empty();
+    }
+    if (langs.empty())
+    {
+        m.field("skipped", "no Cliloc.* or cliloc-1.* files");
         return false;
     }
+    if (legacy)
+        m.field("legacy", true);
     const std::string enu    = ctx.data.find("Cliloc.enu");
     const std::string custom = ctx.data.find("Clilocs.txt");
     std::string overrides;
@@ -43,7 +57,8 @@ bool runCliloc(Context& ctx, JsonWriter& m)
         uo::assets::Cliloc cliloc;
         if (lang != "enu" && !enu.empty())
             cliloc.load(enu);
-        if (!cliloc.load(path))
+        const bool loaded = legacy ? cliloc.loadLegacyFromBytes(Context::readFile(path), 500000) : cliloc.load(path);
+        if (!loaded)
         {
             ctx.warn("cliloc: could not decode " + path);
             continue;

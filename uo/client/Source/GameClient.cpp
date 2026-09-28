@@ -126,7 +126,7 @@ void GameClient::shutdown()
 
 void GameClient::update(float dt)
 {
-    _transport.poll();
+    _transport.pumpEvents();
     _audio.update();
 
     // Keep-alive: ClassicUO pings roughly every 30 seconds once in game.

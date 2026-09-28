@@ -686,6 +686,49 @@ TEST_CASE("cliloc loads BWT-compressed files")
     CHECK(assets::bwtDecompress(Bytes{1, 2, 3}).empty());
 }
 
+TEST_CASE("cliloc loads the legacy IFF cliloc-1 table")
+{
+    // FORM DATA { FORM LANG { INFO, TEXT } }, as 1.x clients ship cliloc-1.enu.
+    auto be32 = [](Bytes& b, std::uint32_t v) {
+        for (int s = 24; s >= 0; s -= 8)
+            b.push_back(static_cast<std::uint8_t>(v >> s));
+    };
+    auto chunk = [&](const char* tag, const Bytes& payload) {
+        Bytes b(tag, tag + 4);
+        be32(b, static_cast<std::uint32_t>(payload.size()));
+        b.insert(b.end(), payload.begin(), payload.end());
+        if (payload.size() & 1)
+            b.push_back(0);
+        return b;
+    };
+    // INFO's u32 after the language: 1 = Latin-1 (enu), 2 = UTF-16LE (jpn, cht, kor).
+    auto file = [&](Bytes info, const Bytes& text) {
+        Bytes lang = {'L', 'A', 'N', 'G'};
+        for (const Bytes& c : {chunk("INFO", info), chunk("TEXT", text)})
+            lang.insert(lang.end(), c.begin(), c.end());
+        Bytes data = {'D', 'A', 'T', 'A'};
+        const Bytes inner = chunk("FORM", lang);
+        data.insert(data.end(), inner.begin(), inner.end());
+        return chunk("FORM", data);
+    };
+    const std::string strings = std::string("Reputation aversion triggered") + '\0' + "Caf\xE9" + '\0';
+
+    assets::Cliloc cliloc;
+    REQUIRE(cliloc.loadLegacyFromBytes(file({'e', 'n', 'u', 0, 1, 0, 0, 0}, Bytes(strings.begin(), strings.end())), 500000));
+    CHECK(cliloc.size() == 2);
+    CHECK(cliloc.getString(500000) == "Reputation aversion triggered");
+    CHECK(cliloc.getString(500001) == "Caf\xC3\xA9");
+    CHECK_FALSE(cliloc.loadLegacyFromBytes(Bytes{1, 2, 3}, 500000));
+
+    // "I!" then U+546A U+6587 (a CJK pair), each NUL-terminated in UTF-16LE.
+    const Bytes wide = {'I', 0, '!', 0, 0, 0, 0x6A, 0x54, 0x87, 0x65, 0, 0};
+    assets::Cliloc jpn;
+    REQUIRE(jpn.loadLegacyFromBytes(file({'j', 'p', 'n', 0, 2, 0, 0, 0}, wide), 500000));
+    CHECK(jpn.size() == 2);
+    CHECK(jpn.getString(500000) == "I!");
+    CHECK(jpn.getString(500001) == "\xE5\x91\xAA\xE6\x96\x87");
+}
+
 TEST_CASE("utf conversion and word capitalization")
 {
     CHECK(text::utf8ToUtf16("a\xC3\xA9\xE4\xB8\x80") == u"aé一");

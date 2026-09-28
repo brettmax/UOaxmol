@@ -25,10 +25,17 @@ public:
     // One cliloc file, added on top of what is already loaded.
     bool load(const std::string& path);
     // Cliloc.<lang> from the installation (Cliloc.enu when that language is missing), with
-    // Cliloc.enu underneath when lang is not "enu", then Clilocs.txt on top.
+    // Cliloc.enu underneath when lang is not "enu", then Clilocs.txt on top. Installations
+    // older than Cliloc.enu fall back to cliloc-1.<lang> (or cliloc-1.enu).
     bool load(const Installation& installation, std::string_view lang);
     // One cliloc file image, plain or BWT-compressed, added on top of what is loaded.
     bool loadFromBytes(std::span<const std::uint8_t> bytes);
+    // A pre-Cliloc.enu string table (cliloc-1.enu in 1.x clients): an IFF image
+    // FORM DATA { FORM LANG { INFO, TEXT } } whose TEXT is NUL-separated strings, Latin-1 or
+    // UTF-16LE as INFO says.
+    // String i becomes entry `base + i`; cliloc-1 holds 500000 and up, the numbers
+    // ModernUO still sends for those messages.
+    bool loadLegacyFromBytes(std::span<const std::uint8_t> bytes, std::int32_t base);
     // Clilocs.txt content: "<number><tab or spaces><text>" per line, '#' comments.
     // Returns the number of entries added.
     int loadOverrides(std::string_view text);

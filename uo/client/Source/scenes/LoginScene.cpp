@@ -75,6 +75,10 @@ ui::InputField* LoginScene::addField(const char* label, std::string_view value, 
     field->setPlaceholderColor(Color32(90, 85, 75, 255));
     field->setAnchorPoint(Vec2(0, 0.5f));
     field->setPosition(Vec2(x, y));
+    // Auto size measures the placeholder and wraps the value into that width, which cut
+    // "127.0.0.1" to "127.0." and "2593" to "259"; give every field room for a data path.
+    field->setAutoSize(false);
+    field->setContentSize(Vec2(480, 28));
     if (password)
         field->setPasswordEnabled(true);
     field->setString(value);

@@ -21,16 +21,16 @@ constexpr std::size_t staticGroupSize(bool isNew)
 }
 }  // namespace
 
-TileData::Format TileData::detect(std::size_t size)
+TileData::Format TileData::detect(std::size_t size, Format ambiguous)
 {
     auto fits = [size](bool isNew) {
         std::size_t land = kLandGroups * landGroupSize(isNew);
         return size > land && (size - land) % staticGroupSize(isNew) == 0;
     };
     bool oldFits = fits(false), newFits = fits(true);
-    if (newFits && !oldFits)
-        return Format::New;
-    return Format::Old;
+    if (newFits != oldFits)
+        return newFits ? Format::New : Format::Old;
+    return ambiguous == Format::New ? Format::New : Format::Old;
 }
 
 bool TileData::load(const std::string& path, Format format)

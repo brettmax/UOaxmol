@@ -44,6 +44,18 @@ the UO data folder, server, account, client version, and `autoLogin`. Arrow keys
 `uo/tests/smoke/run_smoke.sh build/client` runs the real client under Xvfb against a fake
 shard with synthetic data files, logs in, enters the world and saves a screenshot.
 
+### Windows
+
+Use the Visual Studio generator (`-G "Visual Studio 17 2022"` or `"Visual Studio 18 2026"`,
+`-A x64`) and `--config Release` when building. The standalone core needs zlib, which Windows
+does not ship: build or install it and pass its prefix, e.g.
+`cmake -S uo -B build/uo -DCMAKE_PREFIX_PATH=C:/zlib`. For the client, either run `setup.ps1`
+first or configure with `-DAX_ENABLE_MSEDGE_WEBVIEW2=OFF`, since WebView2 needs the
+`nuget.exe` that `setup.ps1` downloads. `axslcc` and `pwsh` must be on `PATH` either way.
+
+Settings live in `%LOCALAPPDATA%\AxmolUO\settings.json`. `AXMOLUO_RHI=d3d11|d3d12|vk|gl` picks
+the graphics backend, which helps when a rendering problem may be driver-specific.
+
 ## Conversion map
 
 | ClassicUO (C#) | AxmolUO (C++) | Status |
@@ -54,9 +66,9 @@ shard with synthetic data files, logs in, enters the world and saves a screensho
 | `Assets/HuesLoader`, `HuesHelper` | `core/assets/Hues`, `Color` | done |
 | `Assets/ArtLoader` | `core/assets/Art` | done |
 | `Assets/GumpsLoader` | `core/assets/Gumps` | done (zlib/BWT UOP entries pending) |
-| `Assets/TileDataLoader` | `core/assets/TileData` | done (old and High Seas layouts) |
+| `Assets/TileDataLoader` | `core/assets/TileData` | done (old and High Seas layouts, told apart by file size) |
 | `Assets/MapLoader` | `core/assets/Map` | done (MUL + UOP; diff patches pending) |
-| `Assets/ClilocLoader` | `core/assets/Cliloc` | done (BWT-compressed clilocs pending) |
+| `Assets/ClilocLoader` | `core/assets/Cliloc` | done (BWT-compressed clilocs pending); 1.x clients' IFF `cliloc-1.<lang>` as 500000+ |
 | `Assets/UOFileManager` | `core/assets/Installation` | done |
 | `Network/PacketsTable` | `core/net/PacketTable` | done |
 | `Network/Huffman` | `core/net/Huffman` | done (+ encoder for tests) |

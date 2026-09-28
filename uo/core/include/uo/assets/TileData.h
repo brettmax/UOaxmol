@@ -92,8 +92,9 @@ public:
     bool load(const std::string& path, Format format = Format::Auto);
     bool loadFromBytes(std::span<const std::uint8_t> bytes, Format format = Format::Auto);
 
-    // Picks the layout whose record sizes divide the file evenly.
-    static Format detect(std::size_t fileSize);
+    // Picks the layout whose record sizes divide the file evenly; `ambiguous` when both or
+    // neither do (real files always fit exactly one).
+    static Format detect(std::size_t fileSize, Format ambiguous = Format::Old);
 
     const std::vector<LandTile>& land() const { return _land; }
     const std::vector<StaticTile>& statics() const { return _statics; }

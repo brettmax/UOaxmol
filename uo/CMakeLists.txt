@@ -7,6 +7,11 @@ project(AxmolUO LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Sources and tests contain UTF-8 literals; MSVC otherwise reads them in the ANSI codepage.
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 add_subdirectory(core)
 
 option(UO_BUILD_TESTS "Build AxmolUO core tests" ON)

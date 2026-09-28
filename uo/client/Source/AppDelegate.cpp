@@ -40,8 +40,20 @@ AppDelegate::~AppDelegate() {}
 // it will affect all platforms
 void AppDelegate::applicationWillLaunch()
 {
-    // Overrides any command-line driver preference (default is Auto).
-    // GraphicsCore::setPreferredBackend(GraphicsBackend::Auto);
+    // AXMOLUO_RHI=gl|d3d11|d3d12|vk picks the graphics backend (default: Axmol's own choice),
+    // so a rendering difference can be checked against another driver.
+    if (const char* rhi = std::getenv("AXMOLUO_RHI"); rhi && *rhi)
+    {
+        const std::string_view name(rhi);
+        if (name == "gl")
+            GraphicsCore::setPreferredBackend(rhi::GraphicsBackend::OpenGL);
+        else if (name == "d3d11")
+            GraphicsCore::setPreferredBackend(rhi::GraphicsBackend::D3D11);
+        else if (name == "d3d12")
+            GraphicsCore::setPreferredBackend(rhi::GraphicsBackend::D3D12);
+        else if (name == "vk")
+            GraphicsCore::setPreferredBackend(rhi::GraphicsBackend::Vulkan);
+    }
 
     // Enable logging output colored text style and prefix timestamp
     setLogFmtFlag(ax::LogFmtFlag::Full);

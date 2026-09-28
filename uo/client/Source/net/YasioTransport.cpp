@@ -92,7 +92,7 @@ void YasioTransport::disconnect()
     _channel = -1;
 }
 
-void YasioTransport::poll()
+void YasioTransport::pumpEvents()
 {
     if (!_service)
         return;
