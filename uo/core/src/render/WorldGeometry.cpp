@@ -3,6 +3,8 @@
 
 #include "uo/render/WorldGeometry.h"
 
+#include "uo/anim/AnimationCache.h"
+
 namespace uo::render
 {
 
@@ -73,13 +75,35 @@ private:
 constexpr Vec3 kUp{0, 0, 1};
 const Vec3 kFlatNormals[4] = {kUp, kUp, kUp, kUp};
 
-void sprite(Emitter& e, const TextureRegion& r, float x, float y, const HueVector& hue)
+// Batcher2D mirrors a sprite by swapping its U coordinates.
+UvRect flipU(UvRect uv)
+{
+    uv.x += uv.w;
+    uv.w = -uv.w;
+    return uv;
+}
+
+void sprite(Emitter& e, const TextureRegion& r, float x, float y, const HueVector& hue, bool mirror = false)
 {
     const float w     = static_cast<float>(r.width);
     const float h     = static_cast<float>(r.height);
     const float px[4] = {x, x + w, x, x + w};
     const float py[4] = {y, y, y + h, y + h};
-    e.quad(r.texture, px, py, halfPixelUvs(r), kFlatNormals, hue);
+    const UvRect uv   = halfPixelUvs(r);
+    e.quad(r.texture, px, py, mirror ? flipU(uv) : uv, kFlatNormals, hue);
+}
+
+// Batcher2D.DrawShadow: a sheared, half-height copy whose top-left sprite corner is (x, y).
+void shadow(Emitter& e, const TextureRegion& r, float x, float y, const HueVector& hue, bool mirror = false)
+{
+    const float width      = static_cast<float>(r.width);
+    const float height     = r.height * 0.5f;
+    const float translated = y + height - 10;
+    const float ratio      = height / width;
+    const float px[4]      = {x + width * ratio, x + width * (ratio + 1.0f), x, x + width};
+    const float py[4]      = {translated, translated, translated + height, translated + height};
+    const UvRect uv        = halfPixelUvs(r);
+    e.quad(r.texture, px, py, mirror ? flipU(uv) : uv, kFlatNormals, hue);
 }
 
 }  // namespace
@@ -147,15 +171,21 @@ void buildWorldGeometry(const std::vector<DrawItem>& items,
             {
                 int x, y;
                 staticDrawOrigin(item.screenX, item.screenY, r.width, r.height, x, y);
+                shadow(e, r, static_cast<float>(x), static_cast<float>(y), item.hue);
+            }
+            break;
 
-                // Batcher2D.DrawShadow (unflipped): a sheared, half-height copy.
-                const float width      = static_cast<float>(r.width);
-                const float height     = r.height * 0.5f;
-                const float translated = y + height - 10;
-                const float ratio      = height / width;
-                const float px[4]      = {x + width * ratio, x + width * (ratio + 1.0f), static_cast<float>(x), x + width};
-                const float py[4]      = {translated, translated, translated + height, translated + height};
-                e.quad(r.texture, px, py, halfPixelUvs(r), kFlatNormals, item.hue);
+        case DrawType::AnimFrame:
+            if (item.frame && textures.animFrame(*item.frame, r))
+            {
+                sprite(e, r, sx, sy, item.hue, item.mirror);
+            }
+            break;
+
+        case DrawType::AnimShadow:
+            if (item.frame && textures.animFrame(*item.frame, r))
+            {
+                shadow(e, r, sx, sy, item.hue, item.mirror);
             }
             break;
         }

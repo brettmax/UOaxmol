@@ -3,6 +3,7 @@
 
 #include "uo/render/Pick.h"
 
+#include "uo/anim/AnimationCache.h"
 #include "uo/assets/Art.h"
 #include "uo/assets/Image.h"
 
@@ -132,7 +133,29 @@ bool hitTest(const DrawItem& item, const ITileData& tiles, IArtHitTest& art, int
         return art.itemOpaque(item.graphic, x - ox, y - oy);
     }
 
+    case DrawType::AnimFrame:
+    {
+        // MobileView.CheckMouseSelection: the frame pixel under the point, mirrored with it.
+        if (!item.frame)
+        {
+            return false;
+        }
+        const int w = item.frame->width, h = item.frame->height;
+        int lx = x - item.screenX;
+        const int ly = y - item.screenY;
+        if (lx < 0 || ly < 0 || lx >= w || ly >= h)
+        {
+            return false;
+        }
+        if (item.mirror)
+        {
+            lx = w - 1 - lx;
+        }
+        return item.frame->hitTest(lx, ly);
+    }
+
     case DrawType::Shadow:
+    case DrawType::AnimShadow:
         return false;
     }
     return false;

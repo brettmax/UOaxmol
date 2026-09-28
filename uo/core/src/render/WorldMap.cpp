@@ -356,7 +356,7 @@ bool WorldMap::removeObject(std::uint32_t serial, int x, int y)
     return false;
 }
 
-void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out) const
+void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out, IMobileDrawSource* mobiles) const
 {
     out.clear();
 
@@ -370,6 +370,7 @@ void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out)
 
     std::vector<Keyed> keyed;
     uint32_t seq = 0;
+    std::vector<DrawItem> parts;
 
     const int minX = std::max(0, view.minTileX);
     const int minY = std::max(0, view.minTileY);
@@ -425,6 +426,26 @@ void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out)
 
                 if (obj.z >= view.maxZ)
                 {
+                    continue;
+                }
+
+                if (obj.kind == ObjectKind::Mobile)
+                {
+                    // A body id is not an item graphic: without a source there is nothing to draw.
+                    if (!mobiles)
+                    {
+                        continue;
+                    }
+
+                    parts.clear();
+                    mobiles->appendMobile(obj, item, parts);
+
+                    for (DrawItem& part : parts)
+                    {
+                        part.object = &obj;
+                        part.depth  = depth;
+                        keyed.push_back({depth, x, seq++, part});
+                    }
                     continue;
                 }
 

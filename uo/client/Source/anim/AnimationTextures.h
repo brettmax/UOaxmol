@@ -4,6 +4,7 @@
 #pragma once
 
 #include "uo/anim/AnimationCache.h"
+#include "uo/render/WorldGeometry.h"
 
 #include "axmol/renderer/Texture2D.h"
 
@@ -26,6 +27,9 @@ public:
 
     // The frame's texture, created on first use; nullptr for an empty frame.
     ax::Texture2D* get(const anim::Frame& frame);
+
+    // The frame as a whole-texture region, for render::ITextureSource::animFrame.
+    bool region(const anim::Frame& frame, render::TextureRegion& out);
 
     void clear();
     size_t size() const { return _textures.size(); }

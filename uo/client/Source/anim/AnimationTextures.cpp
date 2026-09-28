@@ -51,4 +51,15 @@ ax::Texture2D* AnimationTextures::get(const anim::Frame& frame)
     return texture;
 }
 
+bool AnimationTextures::region(const anim::Frame& frame, render::TextureRegion& out)
+{
+    ax::Texture2D* texture = get(frame);
+    if (!texture)
+    {
+        return false;
+    }
+    out = {texture, frame.width, frame.height, 0, 0, frame.width, frame.height};
+    return true;
+}
+
 } // namespace uo::client

@@ -7,9 +7,12 @@
 #include "InputRouter.h"
 #include "LoginScene.h"
 
+#include "anim/AnimationTextures.h"
 #include "world/axmol/HueShader.h"
 #include "world/axmol/WorldRenderer.h"
 
+#include "uo/anim/AnimationsLoader.h"
+#include "uo/anim/WorldMobiles.h"
 #include "uo/net/OutgoingPackets.h"
 #include "uo/render/HueTexture.h"
 
@@ -24,7 +27,6 @@ using uo::client::input::MouseButton;
 namespace
 {
 constexpr const char* kFont = "fonts/arial.ttf";
-constexpr float kPickRadius = 24.f;  // how far from an entity's marker a click still picks it
 
 // The map the world is on; the world reports -1 until 0x1B / 0xBF 0x08 set it.
 int currentMap()
@@ -63,8 +65,9 @@ namespace
 class SceneTextures final : public uo::render::ITextureSource
 {
 public:
-    SceneTextures(const uo::assets::Installation& install, const uo::assets::Texmaps* texmaps)
-        : _art(install), _texmaps(texmaps)
+    SceneTextures(const uo::assets::Installation& install, const uo::assets::Texmaps* texmaps,
+                  uo::client::AnimationTextures* animations)
+        : _art(install), _texmaps(texmaps), _animations(animations)
     {}
 
     ~SceneTextures() override
@@ -93,6 +96,11 @@ public:
         return fill(_art.statik(graphic), out);
     }
 
+    bool animFrame(const uo::anim::Frame& frame, uo::render::TextureRegion& out) override
+    {
+        return _animations && _animations->region(frame, out);
+    }
+
 private:
     static bool fill(Texture2D* tex, uo::render::TextureRegion& out)
     {
@@ -105,6 +113,7 @@ private:
 
     UOTextures _art;
     const uo::assets::Texmaps* _texmaps;
+    uo::client::AnimationTextures* _animations;
     std::unordered_map<std::uint16_t, Texture2D*> _texmapCache;
 };
 }  // namespace
@@ -141,7 +150,38 @@ bool WorldScene::init()
     {
         _source        = std::make_unique<uo::render::AssetsWorldSource>(*map, gc.install().tileData(), _texmaps.get());
         _map           = std::make_unique<uo::render::WorldMap>(*_source, *_source);
-        _textureSource = std::make_unique<SceneTextures>(gc.install(), _texmaps.get());
+        // Mobile, mount and equipment animations (anim*.mul / AnimationFrame*.uop).
+        uo::anim::AnimationsConfig animConfig;
+        animConfig.directory         = gc.install().options().directory;
+        animConfig.version           = gc.world().clientVersion;
+        animConfig.isUopInstallation = gc.install().isUop();
+        animConfig.resolve           = [&install = gc.install()](const std::string& name) { return install.path(name); };
+        _animLoader = std::make_unique<uo::anim::AnimationsLoader>();
+        if (_animLoader->load(animConfig))
+        {
+            _animCache    = std::make_unique<uo::anim::AnimationCache>(*_animLoader);
+            _animTextures = std::make_unique<uo::client::AnimationTextures>(*_animCache);
+            const auto& tiles = gc.install().tileData();
+            _animator = std::make_unique<uo::anim::WorldMobileAnimator>(
+                *_animCache, gc.world(),
+                [&tiles](std::uint16_t graphic) {
+                    uo::anim::WorldMobileAnimator::ItemInfo info;
+                    if (const auto* t = tiles.staticTile(graphic))
+                    {
+                        info.animId     = t->animId;
+                        info.partialHue = (t->flags & uo::assets::TF_PartialHue) != 0;
+                        info.isLight    = (t->flags & uo::assets::TF_LightSource) != 0;
+                    }
+                    return info;
+                },
+                [&movement = gc.movement()](std::uint32_t serial) { return movement.motion(serial); });
+        }
+        else
+        {
+            AXLOGW("AxmolUO: no animation files, mobiles are not drawn");
+        }
+
+        _textureSource = std::make_unique<SceneTextures>(gc.install(), _texmaps.get(), _animTextures.get());
         _hitTest       = std::make_unique<uo::render::ArtHitTest>(gc.install().art());
         _renderer      = uo::render::WorldRenderer::create(*_source, *_textureSource);
     }
@@ -154,7 +194,7 @@ bool WorldScene::init()
         addChild(_renderer);
     }
 
-    // Mobiles: placeholders above the world until animations are ported.
+    // Mobile name labels, above the world.
     _worldNode = Node::create();
     addChild(_worldNode, 1);
 
@@ -267,6 +307,12 @@ void WorldScene::update(float dt)
         centerCamera();
     }
 
+    // Steps completed this frame move mobiles to new tiles; then their frames advance. The draw
+    // list holds frame pointers, so it is rebuilt whenever the animator reports a change.
+    syncMobileTiles();
+    if (_animator && _animator->update(gc.movement().now()))
+        _drawListDirty = true;
+
     rebuildDrawList();
 }
 
@@ -351,31 +397,8 @@ std::optional<WorldScene::PickedTile> WorldScene::tileAt(Vec2 screen) const
 uo::world::Entity* WorldScene::entityAt(Vec2 screen) const
 {
     auto& world = GameClient::instance().world();
-    const Vec2 w = _worldNode->convertToNodeSpace(_director->screenToCanvas(screen));
 
-    // Mobile markers are drawn above the world, so they win.
-    uo::world::Entity* best = nullptr;
-    float bestDistance      = kPickRadius;
-    for (const auto& [serial, node] : _entities)
-    {
-        auto* e = world.get(serial);
-        if (e == nullptr)
-        {
-            continue;
-        }
-        const float d = (node->getPosition() + Vec2(0, 30)).distance(w);
-        if (d < bestDistance)
-        {
-            bestDistance = d;
-            best         = e;
-        }
-    }
-    if (best != nullptr)
-    {
-        return best;
-    }
-
-    // Ground items: only when one is the topmost thing drawn under the point.
+    // Mobiles and ground items: only when one is the topmost thing drawn under the point.
     if (const auto* hit = pickAt(screen); hit != nullptr && hit->object->serial != 0)
     {
         return world.get(hit->object->serial);
@@ -534,6 +557,52 @@ void WorldScene::loadBlock(BlockKey key)
         if (i.onGround() && (i.x >> 3) == key.bx && (i.y >> 3) == key.by)
             addItem(i);
     });
+    // Mobiles on the block, likewise.
+    GameClient::instance().world().forEachMobile([&](uo::world::Mobile& m) {
+        if ((m.x >> 3) == key.bx && (m.y >> 3) == key.by)
+        {
+            _mobiles.erase(m.serial);
+            addMobile(m);
+        }
+    });
+}
+
+void WorldScene::addMobile(const uo::world::Mobile& m)
+{
+    if (!_map)
+        return;
+
+    if (auto it = _mobiles.find(m.serial); it != _mobiles.end())
+    {
+        if (it->second.x == m.x && it->second.y == m.y && it->second.z == m.z)
+            return;
+        _map->removeObject(m.serial, it->second.x, it->second.y);
+        _mobiles.erase(it);
+    }
+
+    uo::render::WorldObject obj;
+    obj.kind    = uo::render::ObjectKind::Mobile;
+    obj.graphic = m.graphic;
+    obj.hue     = m.hue;
+    obj.x       = m.x;
+    obj.y       = m.y;
+    obj.z       = m.z;
+    obj.serial  = m.serial;
+
+    if (_map->addObject(obj))
+        _mobiles[m.serial] = {m.x, m.y, m.z};
+    _drawListDirty = true;
+}
+
+void WorldScene::syncMobileTiles()
+{
+    if (!_map)
+        return;
+    GameClient::instance().world().forEachMobile([this](uo::world::Mobile& m) {
+        const auto it = _mobiles.find(m.serial);
+        if (it == _mobiles.end() || it->second.x != m.x || it->second.y != m.y || it->second.z != m.z)
+            addMobile(m);
+    });
 }
 
 void WorldScene::addItem(const uo::world::Entity& e)
@@ -583,7 +652,7 @@ void WorldScene::rebuildDrawList()
     view.maxTileY = ((p->y >> 3) + kViewBlocks) * 8 + 7;
     view.playerZ  = p->z;
 
-    _map->buildDrawList(view, _drawList);
+    _map->buildDrawList(view, _drawList, _animator.get());
 }
 
 const uo::render::DrawItem* WorldScene::pickAt(Vec2 screen) const
@@ -627,11 +696,8 @@ void WorldScene::syncEntity(const uo::world::Entity& e)
     {
         if (e.isMobile())
         {
-            // Placeholder until mobile animations are ported: a notoriety-coloured marker and name.
-            node     = Node::create();
-            auto dot = DrawNode::create();
-            dot->setName("marker");
-            node->addChild(dot);
+            // The body is drawn by the renderer; this node carries the notoriety-coloured name.
+            node      = Node::create();
             auto name = Label::createWithTTF(e.name, kFont, 13);
             name->setPosition(Vec2(0, 58));
             name->enableOutline(Color32::black, 1);
@@ -653,12 +719,8 @@ void WorldScene::syncEntity(const uo::world::Entity& e)
 
     if (mobile)
     {
+        addMobile(*mobile);
         // Notoriety can arrive after creation (0x78 fills it in after the entity exists).
-        if (auto* dot = dynamic_cast<DrawNode*>(node->getChildByName("marker")))
-        {
-            dot->clear();
-            dot->drawSolidCircle(Vec2(0, 30), 10, 0, 20, Color(notorietyColor(mobile->notoriety)));
-        }
         if (auto* name = dynamic_cast<Label*>(node->getChildByName("name")))
         {
             name->setString(e.name);
@@ -680,6 +742,13 @@ void WorldScene::removeEntity(std::uint32_t serial)
         if (_map)
             _map->removeObject(serial, it->second.first, it->second.second);
         _items.erase(it);
+        _drawListDirty = true;
+    }
+    if (auto it = _mobiles.find(serial); it != _mobiles.end())
+    {
+        if (_map)
+            _map->removeObject(serial, it->second.x, it->second.y);
+        _mobiles.erase(it);
         _drawListDirty = true;
     }
     if (auto it = _entities.find(serial); it != _entities.end())

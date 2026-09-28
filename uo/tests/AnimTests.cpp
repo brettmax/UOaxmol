@@ -10,11 +10,16 @@
 #include "uo/anim/Equipment.h"
 #include "uo/anim/MobileAnimation.h"
 #include "uo/anim/MobileRenderer.h"
+#include "uo/anim/WorldMobiles.h"
 #include "uo/assets/Verdata.h"
 #include "uo/assets/Bwt.h"
 #include "uo/io/Compression.h"
 #include "uo/io/DefReader.h"
 #include "uo/io/UOFile.h"
+#include "uo/render/Pick.h"
+#include "uo/render/WorldGeometry.h"
+#include "uo/render/WorldMap.h"
+#include "uo/world/World.h"
 
 
 #include <algorithm>
@@ -1010,4 +1015,252 @@ TEST_CASE("animation clock loops client actions and ends server actions")
     CHECK(state.animationGroup == 0xFF);
     CHECK_FALSE(state.animationFromServer);
     CHECK(clock.animIndex == 0);
+}
+
+namespace
+{
+
+struct FlatMap : render::IMapSource
+{
+    int width() const override { return 64; }
+    int height() const override { return 64; }
+    bool land(int x, int y, render::LandCell& out) const override
+    {
+        if (x < 0 || y < 0 || x >= 64 || y >= 64)
+        {
+            return false;
+        }
+        out = {3, 0};
+        return true;
+    }
+    void statics(int, int, std::vector<render::StaticEntry>&) const override {}
+};
+
+struct NoTiles : render::ITileData
+{
+    render::LandTileData land(uint16_t) const override { return {0, 1}; }
+    render::StaticTileData item(uint16_t) const override { return {}; }
+    int itemCount() const override { return 0x10000; }
+    bool hasTexmap(uint16_t) const override { return true; }
+};
+
+struct FrameTextures : render::ITextureSource
+{
+    int tex = 7;
+    bool landArt(uint16_t, render::TextureRegion&) override { return false; }
+    bool texmap(uint16_t, render::TextureRegion&) override { return false; }
+    bool itemArt(uint16_t, render::TextureRegion&) override { return false; }
+    bool animFrame(const Frame& f, render::TextureRegion& r) override
+    {
+        r = {&tex, 64, 64, 0, 0, f.width, f.height};
+        return true;
+    }
+};
+
+struct NoArt : render::IArtHitTest
+{
+    bool itemSize(uint16_t, int&, int&) override { return false; }
+    bool itemOpaque(uint16_t, int, int) override { return false; }
+};
+
+// Appends a shadow and two frames for every mobile, as WorldMobileAnimator does.
+struct ThreePartSource : render::IMobileDrawSource
+{
+    Frame frame;
+    std::vector<render::DrawItem> bases;
+
+    void appendMobile(const render::WorldObject&, const render::DrawItem& base,
+                      std::vector<render::DrawItem>& out) override
+    {
+        bases.push_back(base);
+        for (auto [type, graphic] : {std::pair{render::DrawType::AnimShadow, 1}, {render::DrawType::AnimFrame, 2},
+                                     {render::DrawType::AnimFrame, 3}})
+        {
+            render::DrawItem d = base;
+            d.type             = type;
+            d.graphic          = static_cast<uint16_t>(graphic);
+            d.frame            = &frame;
+            out.push_back(d);
+        }
+    }
+};
+
+} // namespace
+
+TEST_CASE("mobiles expand into consecutive animation parts in the world draw list")
+{
+    FlatMap map;
+    NoTiles tiles;
+    render::WorldMap world(map, tiles);
+    render::ViewParams view;
+    view.maxTileX = view.maxTileY = 15;
+    world.ensureLoaded(view);
+
+    render::WorldObject mobile;
+    mobile.kind    = render::ObjectKind::Mobile;
+    mobile.graphic = 400;
+    mobile.x = mobile.y = 5;
+    mobile.serial  = 0x10;
+    REQUIRE(world.addObject(mobile));
+
+    render::WorldObject statue = mobile;
+    statue.kind   = render::ObjectKind::Item;
+    statue.x      = 6;
+    statue.serial = 0x40000001;
+    REQUIRE(world.addObject(statue));
+
+    ThreePartSource source;
+    std::vector<render::DrawItem> list;
+    world.buildDrawList(view, list, &source);
+
+    REQUIRE(source.bases.size() == 1);
+    int sx = 0, sy = 0;
+    render::isoScreenPosition(5, 5, 0, 0, 0, sx, sy);
+    CHECK(source.bases[0].screenX == sx);
+    CHECK(source.bases[0].screenY == sy);
+
+    std::vector<size_t> parts;
+    for (size_t i = 0; i < list.size(); ++i)
+    {
+        if (list[i].object && list[i].object->serial == 0x10)
+        {
+            parts.push_back(i);
+        }
+    }
+    REQUIRE(parts.size() == 3);
+    CHECK(parts[1] == parts[0] + 1);
+    CHECK(parts[2] == parts[1] + 1);
+    CHECK(list[parts[0]].type == render::DrawType::AnimShadow);
+    CHECK(list[parts[1]].graphic == 2);
+    CHECK(list[parts[2]].graphic == 3);
+    CHECK(list[parts[0]].depth == list[parts[2]].depth);
+
+    // Without a source the mobile is skipped; its body id is not item art.
+    world.buildDrawList(view, list);
+    CHECK(std::none_of(list.begin(), list.end(),
+                       [](const render::DrawItem& d) { return d.object && d.object->serial == 0x10; }));
+}
+
+TEST_CASE("animation frames draw mirrored and pick by their own pixels")
+{
+    Frame f;
+    f.width   = 4;
+    f.height  = 2;
+    f.hitMask = {1}; // only the top-left pixel is opaque
+
+    render::WorldObject obj;
+    obj.kind   = render::ObjectKind::Mobile;
+    obj.serial = 0x10;
+
+    render::DrawItem item;
+    item.type    = render::DrawType::AnimFrame;
+    item.screenX = 10;
+    item.screenY = 20;
+    item.frame   = &f;
+    item.object  = &obj;
+
+    NoTiles tiles;
+    FrameTextures textures;
+    render::WorldGeometry geo;
+    render::buildWorldGeometry({item}, tiles, textures, geo);
+    REQUIRE(geo.vertices.size() == 4);
+    CHECK(geo.vertices[0].x == 10);
+    CHECK(geo.vertices[1].x == 14);
+    CHECK(geo.vertices[2].y == 22);
+    CHECK(geo.vertices[0].u < geo.vertices[1].u);
+
+    NoArt art;
+    CHECK(render::hitTest(item, tiles, art, 10, 20));
+    CHECK_FALSE(render::hitTest(item, tiles, art, 13, 20));
+    CHECK_FALSE(render::hitTest(item, tiles, art, 14, 20));
+
+    // Mirrored: U runs right to left and the opaque pixel moves to the right edge.
+    item.mirror = true;
+    render::buildWorldGeometry({item}, tiles, textures, geo);
+    CHECK(geo.vertices[0].u > geo.vertices[1].u);
+    CHECK(render::hitTest(item, tiles, art, 13, 20));
+    CHECK_FALSE(render::hitTest(item, tiles, art, 10, 20));
+
+    // Shadows are drawn sheared and are never picked.
+    item.type = render::DrawType::AnimShadow;
+    render::buildWorldGeometry({item}, tiles, textures, geo);
+    REQUIRE(geo.vertices.size() == 4);
+    CHECK(geo.vertices[0].x > geo.vertices[2].x);
+    CHECK_FALSE(render::hitTest(item, tiles, art, 13, 20));
+}
+
+TEST_CASE("world mobiles animate from world state and draw with their equipment")
+{
+    WorldFixture w;
+    world::World game;
+
+    world::Mobile& m = game.getOrCreateMobile(0x100);
+    m.graphic        = 400;
+    m.direction      = world::Direction::South;
+
+    world::Item& shirt = game.getOrCreateItem(0x40000001);
+    shirt.graphic      = 0x1517;
+    shirt.hue          = 0x0021;
+    shirt.layer        = world::Layer::Shirt;
+    shirt.container    = m.serial;
+    game.pushToBack(m, shirt);
+
+    const movement::MotionClock* motion = nullptr;
+    WorldMobileAnimator animator(
+        *w.cache, game,
+        [](uint16_t g) {
+            return g == 0x1517 ? WorldMobileAnimator::ItemInfo{512, true, false} : WorldMobileAnimator::ItemInfo{};
+        },
+        [&](uint32_t) { return motion; });
+
+    CHECK(animator.equipment(m).find(Layer::Shirt)->animId == 512);
+    CHECK_FALSE(animator.animState(m, 1000).isWalking);
+
+    // The first update starts the idle cycle; two frames at 80 ms.
+    CHECK(animator.update(1000));
+    CHECK(animator.animIndex(0x100) == 1);
+    CHECK_FALSE(animator.update(1050));
+    CHECK(animator.update(1100));
+    CHECK(animator.animIndex(0x100) == 0);
+
+    render::WorldObject obj;
+    obj.kind   = render::ObjectKind::Mobile;
+    obj.serial = 0x100;
+    render::DrawItem base;
+    base.object = &obj;
+    std::vector<render::DrawItem> parts;
+    animator.appendMobile(obj, base, parts);
+
+    REQUIRE(parts.size() == 3); // shadow, body, shirt
+    CHECK(parts[0].type == render::DrawType::AnimShadow);
+    CHECK(parts[0].hue.mode == float(render::SHADER_SHADOW));
+    CHECK(parts[1].type == render::DrawType::AnimFrame);
+    CHECK(parts[1].graphic == 400);
+    CHECK(parts[2].graphic == 512);
+    CHECK(parts[2].frame != nullptr);
+    CHECK_FALSE(parts[2].mirror);
+
+    // A step in progress walks and keeps the scene redrawing.
+    movement::MotionClock clock;
+    clock.offsetX      = 4;
+    clock.lastStepTime = 1150;
+    motion             = &clock;
+    CHECK(animator.animState(m, 1200).isWalking);
+    CHECK(animator.update(1200));
+
+    // A new server animation restarts the clock.
+    motion                   = nullptr;
+    m.animation.source       = world::ServerAnimation::Source::Legacy;
+    m.animation.action       = 7;
+    m.animation.forward      = true;
+    m.animation.repeatCount  = 1;
+    m.animation.sequence    += 1;
+    CHECK(animator.update(2000));
+
+    // Mobiles that leave the world are forgotten.
+    REQUIRE(game.removeMobile(0x100));
+    animator.update(3000);
+    parts.clear();
+    animator.appendMobile(obj, base, parts);
+    CHECK(parts.empty());
 }
