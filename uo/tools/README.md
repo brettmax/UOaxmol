@@ -73,7 +73,8 @@ build/uo/tools/uoconvert/uoconvert --list  # stages
     multis.json                multi id -> [[graphic, x, y, z, flags], ...]
     animdata.json              graphic -> [[frame offsets], frameInterval, frameStart]
     cliloc.<lang>.json         number -> text (UTF-8) per Cliloc.<lang>, with Cliloc.enu under
-                               other languages and the shard's Clilocs.txt on top, as the client loads them
+                               other languages and the shard's Clilocs.txt on top, as the client loads them;
+                               1.x data has cliloc-1.<lang> instead (entries 500000 up, "legacy" in the manifest)
   Music/                       mirrors the client's Music/ folder
     **/*.mp3, Config.txt       copied as is
     **/<name>.ogg              rendered from <name>.mid (44.1 kHz stereo Ogg Vorbis)
