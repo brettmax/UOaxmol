@@ -98,16 +98,18 @@ private:
 
     // Mouse capture.
     Gump* _pressedGump = nullptr;
-    Control* _pressedControl = nullptr;
+    // Controls are retained while referenced here: a gump can drop a control (rebuilding a
+    // list, swapping art) while the pointer is still on it.
+    ax::RefPtr<Control> _pressedControl;
     MouseButton _pressedButton = MouseButton::Left;
     ax::Vec2 _pressWorld;
     ax::Vec2 _gumpStart;
     bool _dragging = false;
     bool _dragMovesGump = false;
-    Control* _hover = nullptr;
+    ax::RefPtr<Control> _hover;
 
     // Double click.
-    Control* _lastClickControl = nullptr;
+    ax::RefPtr<Control> _lastClickControl;
     float _lastClickTime = -1;
     float _clock = 0;
 

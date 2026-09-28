@@ -20,6 +20,7 @@ namespace uo::client::gumps
 {
 
 class Gump;
+class GumpManager;
 
 void placeTopLeft(ax::Node* child, float x, float y, float parentHeight);
 
@@ -78,6 +79,9 @@ public:
     virtual void onClick(MouseButton) {}
     virtual void onDoubleClick(MouseButton) {}
     virtual void onHover(bool /*entered*/) {}
+    // Pointer moved while pressed on a control that does not move the gump (scroll thumbs,
+    // resize handles, sliders).
+    virtual void onMouseDrag(MouseButton, const ax::Vec2& /*local*/) {}
 
     // Item drag (containers, paperdoll): return true to start a drag of this control.
     virtual bool beginDrag() { return false; }
@@ -116,6 +120,7 @@ enum class GumpKind : uint8_t
     Paperdoll,
     Status,
     Skills,
+    HealthBar,
     Other,
 };
 
@@ -133,6 +138,8 @@ public:
     uint32_t serverId() const { return _serverId; }
 
     GumpContext& context() const { return _ctx; }
+    // The manager the gump is open in, or nullptr before it is added.
+    GumpManager* manager() const;
 
     bool canMove() const { return _canMove; }
     void setCanMove(bool v) { _canMove = v; }

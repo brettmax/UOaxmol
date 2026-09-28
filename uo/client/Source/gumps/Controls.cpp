@@ -237,6 +237,16 @@ GumpButton::GumpButton(GumpContext& ctx, uint16_t normal, uint16_t pressed, uint
     showState();
 }
 
+void GumpButton::setGraphics(uint16_t normal, uint16_t pressed, uint16_t over)
+{
+    _normal = normal;
+    _pressed = pressed;
+    _over = over;
+    auto size = textureSize(_ctx.textures->gump(normal));
+    setUOSize(size.width, size.height);
+    showState();
+}
+
 void GumpButton::showState()
 {
     uint16_t g = _normal;

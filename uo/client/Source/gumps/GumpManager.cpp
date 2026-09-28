@@ -426,6 +426,11 @@ void GumpManager::onPointerMove(ax::PointerEvent* e)
             }
         }
 
+        if (_dragging && !_dragMovesGump && _pressedControl)
+        {
+            _pressedControl->onMouseDrag(_pressedButton, _pressedControl->toLocal(world));
+        }
+
         if (_dragging && _dragMovesGump)
         {
             ax::Vec2 delta = world - _pressWorld;
@@ -473,7 +478,7 @@ void GumpManager::onPointerUp(ax::PointerEvent* e)
     }
 
     Gump* g = _pressedGump;
-    Control* c = _pressedControl;
+    ax::RefPtr<Control> c = _pressedControl;
     const bool wasDragging = _dragging;
     _pressedGump = nullptr;
     _pressedControl = nullptr;
