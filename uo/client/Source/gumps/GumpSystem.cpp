@@ -54,6 +54,9 @@ GumpSystem::GumpSystem(const uo::assets::Installation& assets, uo::world::World&
     auto& hooks = PaperdollGump::hooks();
     hooks.openStatus = [this](uint32_t serial) { openStatus(serial); };
     hooks.openHealthBar = [this](uint32_t serial) { openHealthBar(serial); };
+    // Without this the Skills button only sent 0x34 type 5, and the server's reply (0x3A
+    // type 0 on pre-AOS shards) never opens a window: World::skillsRequested is not set.
+    hooks.openSkills = [this](uint32_t) { openSkills(); };
 }
 
 GumpSystem::~GumpSystem()
@@ -69,6 +72,7 @@ GumpSystem::~GumpSystem()
     setItemTileData(nullptr);
     PaperdollGump::hooks().openStatus = nullptr;
     PaperdollGump::hooks().openHealthBar = nullptr;
+    PaperdollGump::hooks().openSkills = nullptr;
 }
 
 void GumpSystem::install(uo::world::PacketHandlers& handlers)
