@@ -785,7 +785,11 @@ void PacketHandlers::updateObject(PacketHandlers&, World& world, BinaryReader& r
     }
 
     if (obj->isMobile())
+    {
+        // updateGameObject already notified; notoriety arrives after it, so tell the view again.
         static_cast<Mobile*>(obj)->notoriety = notoriety;
+        world.listener().onEntityUpdated(*obj);
+    }
 
     if (id != 0x78)
         r.skip(6);

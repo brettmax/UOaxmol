@@ -263,7 +263,6 @@ void WorldScene::syncEntity(const uo::world::Entity& e)
             // Placeholder until mobile animations are ported: a notoriety-coloured marker and name.
             node     = Node::create();
             auto dot = DrawNode::create();
-            dot->drawSolidCircle(Vec2(0, 30), 10, 0, 20, Color(notorietyColor(mobile->notoriety)));
             dot->setName("marker");
             node->addChild(dot);
             auto name = Label::createWithTTF(e.name, kFont, 13);
@@ -287,6 +286,12 @@ void WorldScene::syncEntity(const uo::world::Entity& e)
 
     if (mobile)
     {
+        // Notoriety can arrive after creation (0x78 fills it in after the entity exists).
+        if (auto* dot = dynamic_cast<DrawNode*>(node->getChildByName("marker")))
+        {
+            dot->clear();
+            dot->drawSolidCircle(Vec2(0, 30), 10, 0, 20, Color(notorietyColor(mobile->notoriety)));
+        }
         if (auto* name = dynamic_cast<Label*>(node->getChildByName("name")))
         {
             name->setString(e.name);
