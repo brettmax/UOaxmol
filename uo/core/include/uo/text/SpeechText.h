@@ -4,7 +4,6 @@
 #pragma once
 
 #include "uo/text/FontRenderer.h"
-#include "uo/text/MessageTypes.h"
 
 #include <cstdint>
 #include <string_view>

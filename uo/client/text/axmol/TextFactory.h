@@ -28,6 +28,10 @@ struct TextStyle
     std::uint16_t extraFlags  = 0;   // other uo::text::FontStyle bits (solid, italic, underline...)
     std::uint8_t cell         = 30;  // hue ramp entry for unicode text
     bool saveHitMap           = false;  // keep an alpha mask for pixel-exact hitTest
+    // Gump HTML (unicode fonts only): tags are parsed as the original client does.
+    bool html                  = false;
+    std::uint32_t htmlColor    = 0xFFFFFFFF;  // text color before any tag, see createHtml
+    bool htmlBackgroundColored = false;       // let <body bgcolor> fill the background
 
     std::uint16_t flags() const
     {
@@ -69,6 +73,13 @@ public:
     // pixels hit, as PixelCheck does; otherwise the bounding box does.
     bool hitTest(int x, int y) const;
 
+    // HTML labels: the <a href> areas, in the same local UO coordinates as hitTest, and the
+    // URL under a point (null when none). Mark a clicked URL with markLinkVisited so it
+    // redraws in the visited color.
+    const std::vector<uo::text::WebLinkRect>& links() const { return _links; }
+    const std::string* linkAt(int x, int y) const;
+    void markLinkVisited(const std::string& url);
+
     bool init(std::string_view utf8, const TextStyle& style);
 
 private:
@@ -79,6 +90,7 @@ private:
     int _lineCount = 0;
     int _hitWidth  = 0;
     std::vector<bool> _hitMask;
+    std::vector<uo::text::WebLinkRect> _links;
 };
 
 inline ax::Node* createLabel(std::string_view utf8, const TextStyle& style)
@@ -86,12 +98,22 @@ inline ax::Node* createLabel(std::string_view utf8, const TextStyle& style)
     return TextLabel::create(utf8, style);
 }
 
-// Gump HTML text in unicode font 1 wrapped at `width`, tinted with `defaultRgba`
-// (0xRRGGBBAA). Markup is stripped for now (<br> and <p> break lines, entities decode);
-// the full HTML layout of the original follows behind this signature.
+// Gump HTML text (htmlgump, xmfhtmlgump) in unicode font 1 wrapped at `width`, laid out by
+// the original client's HTML renderer: <b>, <i>, <u>, <p>, <br>, <a href>, <basefont>,
+// <body>, <h1>..<h6>, <big>, <small>, <bq>, <left>/<center>/<right>, <div align>.
+// `defaultRgba` (0xRRGGBBAA) colors text outside any color tag; 0xFFFFFFFF keeps the
+// unhued white. As in ClassicUO's HtmlControl, <body bgcolor> paints only when the control
+// has no background of its own. Returns a TextLabel; its links() are clickable areas.
 ax::Node* createHtml(std::string_view html, int width, std::uint32_t defaultRgba, bool hasBackground);
 
-// The plain text createHtml lays out.
+// Plain text with the markup removed (<br> and <p> break lines, entities decode), for
+// places that show gump HTML without formatting, such as tooltips and logs.
 std::string stripHtml(std::string_view html);
+
+// The HTML start color for a 0xRRGGBBAA color, in the byte order the renderer reads.
+constexpr std::uint32_t htmlStartColor(std::uint32_t rgba)
+{
+    return ((rgba >> 8) & 0xFF) << 24 | ((rgba >> 16) & 0xFF) << 16 | ((rgba >> 24) & 0xFF) << 8 | (rgba & 0xFF);
+}
 
 }  // namespace uo::client::text

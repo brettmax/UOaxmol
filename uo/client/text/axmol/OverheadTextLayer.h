@@ -6,7 +6,7 @@
 
 #include "axmol/TextFactory.h"
 
-#include "uo/text/MessageTypes.h"
+#include "uo/world/Types.h"
 #include "uo/text/SpeechText.h"
 
 #include "axmol/scene/Node.h"
@@ -49,8 +49,8 @@ public:
 
     // Adds a message over `serial` (MessageManager.CreateMessage + GameObject.AddMessage).
     void addMessage(std::uint32_t serial, std::string_view utf8, std::uint16_t hue, std::uint8_t font, bool unicode,
-                    uo::text::MessageType type = uo::text::MessageType::Regular,
-                    uo::text::TextType textType = uo::text::TextType::Object);
+                    uo::world::MessageType type = uo::world::MessageType::Regular,
+                    uo::world::TextType textType = uo::world::TextType::Object);
 
     void removeOwner(std::uint32_t serial);
     void clear();
@@ -68,7 +68,7 @@ private:
         std::uint32_t owner = 0;
         std::uint64_t order = 0;
         std::int64_t expires = 0;
-        uo::text::MessageType type = uo::text::MessageType::Regular;
+        uo::world::MessageType type = uo::world::MessageType::Regular;
         ax::Vec2 position;  // UO screen, top-left of the text
         std::uint8_t alpha = 0xFF;
         bool transparent   = false;

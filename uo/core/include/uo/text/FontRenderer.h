@@ -8,10 +8,12 @@
 
 #include <array>
 #include <cstdint>
+#include <list>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace uo::assets
@@ -42,9 +44,16 @@ struct UnicodeGlyph
 
 // Loads the classic bitmap fonts and turns strings into pixels, line for line the
 // way the original client does (wrapping, cropping, styles, hue application), so
-// text keeps its original look and metrics. HTML gump text is not handled here yet.
+// text keeps its original look and metrics.
 //
-// Not thread-safe: unicode glyphs are decoded lazily on first use.
+// HTML (gump htmlgump/xmfhtmlgump text) is a mode, as in the original: while setUseHtml(true)
+// is on, the unicode functions parse <b>, <i>, <u>, <p>, <br>, <a href>, <basefont>, <body>,
+// <h1>..<h6>, <big>, <small>, <bq>, <left>/<center>/<right> and <div align>, with per-character
+// fonts, styles and colors, 18px lines, body margins and background, and link rectangles in
+// TextBitmap::links. Prefer HtmlScope so the mode cannot leak into other text.
+//
+// Not thread-safe: unicode glyphs are decoded lazily on first use, and HTML parsing keeps
+// per-call state like the original.
 class FontRenderer
 {
 public:
@@ -111,8 +120,89 @@ public:
 
     static int layoutHeight(const TextLayout& layout);
 
+    // --- HTML mode ---
+    // `startColor` is the text color before any tag (0xAABBGGRR as the original's RGBA
+    // reading, 0xFFFFFFFF for "use the hue"); `backgroundCanBeColored` lets <body bgcolor>
+    // fill the bitmap background.
+    void setUseHtml(bool value, uint32_t startColor = 0xFFFFFFFF, bool backgroundCanBeColored = false);
+    bool usingHtml() const { return _useHtml; }
+
+    // Records a clicked link so later renders draw it in the visited-link color. The most
+    // recent 1024 URLs are remembered.
+    void markUrlVisited(std::string_view url);
+    bool urlVisited(std::string_view url) const;
+
+    // Turns HTML mode on for its lifetime and restores the previous mode afterwards.
+    class HtmlScope
+    {
+    public:
+        HtmlScope(FontRenderer& fonts, uint32_t startColor = 0xFFFFFFFF, bool backgroundCanBeColored = false);
+        ~HtmlScope();
+        HtmlScope(const HtmlScope&)            = delete;
+        HtmlScope& operator=(const HtmlScope&) = delete;
+
+    private:
+        FontRenderer& _fonts;
+        bool _wasHtml;
+        uint32_t _oldColor;
+        bool _oldBackground;
+    };
+
 private:
     struct UnicodeFont;
+    struct HtmlChar;
+    struct HtmlTagInfo;
+
+    struct HtmlMargins
+    {
+        int x      = 0;
+        int y      = 0;
+        int width  = 0;
+        int height = 0;
+    };
+
+    struct HtmlStatus
+    {
+        uint32_t backgroundColor     = 0;
+        uint32_t visitedWebLinkColor = 0;
+        uint32_t webLinkColor        = 0;
+        uint32_t color               = 0;
+        HtmlMargins margins;
+        bool backgroundColored = false;
+    };
+
+    // Least-recently-used set of visited URLs (ClassicUO VisitedUrlCache).
+    class VisitedUrls
+    {
+    public:
+        bool isVisited(const std::string& url);
+        void mark(const std::string& url);
+        bool contains(const std::string& url) const { return _map.count(url) != 0; }
+
+    private:
+        static constexpr std::size_t kCapacity = 1024;
+        std::list<std::string> _order;  // most recent first
+        std::unordered_map<std::string, std::list<std::string>::iterator> _map;
+    };
+
+    TextLayout layoutUnicodeInfo(uint8_t font, std::u16string_view str, TextAlign align, uint16_t flags, int width,
+                                 bool countReturns, bool countSpaces, std::vector<std::string>* urls) const;
+    TextLayout layoutHtml(uint8_t font, std::u16string_view str, TextAlign align, uint16_t flags, int width,
+                          std::vector<std::string>& urls) const;
+    int htmlData(std::vector<HtmlChar>& data, uint8_t font, std::u16string_view str, TextAlign align,
+                 uint16_t flags, std::vector<std::string>* urls) const;
+    void currentHtmlInfo(const std::vector<HtmlTagInfo>& stack, HtmlTagInfo& info) const;
+    int parseHtmlTag(std::u16string_view str, int len, int& i, bool& endTag, HtmlTagInfo& info,
+                     std::vector<std::string>* urls) const;
+    void htmlInfoFromContent(HtmlTagInfo& info, std::u16string_view content, std::vector<std::string>* urls) const;
+    uint16_t registerParseUrl(std::vector<std::string>* urls, std::u16string_view link, uint32_t& color) const;
+    // Characters left after the tags are parsed out, as GetTextByWidth* measures them.
+    int htmlVisibleLength(uint8_t font, std::u16string_view str) const;
+    // The HTML branch of GetTextByWidth*: copies as many leading characters as the tags
+    // took up into `out` and moves `str` to the tail, as the original does.
+    void htmlTextByWidthPrefix(uint8_t font, std::u16string_view& str, int width, bool& isCropped,
+                               std::u16string& out, bool unicode) const;
+    void resetHtmlStatus() const;
 
     TextBitmap pixelsAscii(uint8_t font, std::u16string_view str, uint16_t hue, int width, TextAlign align,
                            uint16_t flags) const;
@@ -126,6 +216,9 @@ private:
     const HueResolver* _hues     = &_noHues;
     bool _unusePartialHue        = false;
     bool _recalculateWidthByInfo = false;
+    bool _useHtml                = false;
+    mutable HtmlStatus _html;
+    mutable VisitedUrls _visitedUrls;
 };
 
 }  // namespace uo::text
