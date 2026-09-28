@@ -75,8 +75,10 @@ float4 main(PS_IN input) : SV_Target0
 {
     float4 color = u_tex0.Sample(PointClamp, input.v_texCoord);
 
-    if (color.a == 0.0)
-        discard;
+    // Every cut sets `kill` and one discard runs at the end: with early discards the D3D11
+    // backend's compiler (d3dcompiler_47) fails on this shader with "internal error: argument
+    // pulled into unrelated predicate", and the world does not draw at all.
+    bool kill = color.a == 0.0;
 
     int mode = int(input.v_hue.y + 0.5);
     float alpha = input.v_hue.z;
@@ -89,7 +91,7 @@ float4 main(PS_IN input) : SV_Target0
     }
 
     if (alpha == 0.0)
-        discard;
+        kill = true;
 
     float hue = input.v_hue.x;
 
@@ -148,17 +150,21 @@ float4 main(PS_IN input) : SV_Target0
         float ratio = length(input.v_world - u_cotCenter) / u_cotRadius;
 
         if (ratio < 0.85)
-            discard;
-
-        if (ratio < 1.0)
+        {
+            kill = true;
+        }
+        else if (ratio < 1.0)
         {
             float t = (ratio - 0.85) / 0.15;
             alpha *= t * t * t;
 
             if (alpha < 0.02)
-                discard;
+                kill = true;
         }
     }
+
+    if (kill)
+        discard;
 
     // Premultiplied output; draw with ONE, ONE_MINUS_SRC_ALPHA.
     return color * alpha;
