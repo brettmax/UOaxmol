@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <tuple>
 
@@ -260,6 +262,75 @@ inline Bytes bwtEncode(const Bytes& payload)
     }
     out.push_back(0); // read by the decoder but never emitted
     return out;
+}
+
+// A one-preset SoundFont 2 bank: a looped 441 Hz sine on preset 0, bank 0.
+inline Bytes sineSoundFont()
+{
+    auto chunk = [](const char* id, const Bytes& body) {
+        Bytes b(id, id + 4);
+        le32(b, static_cast<std::uint32_t>(body.size()));
+        b.insert(b.end(), body.begin(), body.end());
+        if (body.size() & 1)
+            b.push_back(0);
+        return b;
+    };
+    auto list = [&](const char* type, const std::vector<Bytes>& chunks) {
+        Bytes body(type, type + 4);
+        for (const auto& c : chunks)
+            body.insert(body.end(), c.begin(), c.end());
+        return chunk("LIST", body);
+    };
+    auto name = [](Bytes& b, const char* n) {
+        std::size_t len = std::strlen(n);
+        for (std::size_t i = 0; i < 20; ++i)
+            b.push_back(i < len ? static_cast<std::uint8_t>(n[i]) : 0);
+    };
+
+    constexpr std::uint32_t kLen = 2200;  // 22 periods of 100 samples at 44.1 kHz
+    Bytes smpl;
+    for (std::uint32_t i = 0; i < kLen + 46; ++i)
+        le16(smpl, static_cast<std::uint16_t>(static_cast<std::int16_t>(
+                       i < kLen ? 20000.0 * std::sin(2.0 * 3.14159265358979 * i / 100.0) : 0.0)));
+
+    Bytes phdr, pbag, pmod(10, 0), pgen, inst, ibag, imod(10, 0), igen, shdr;
+    for (auto [n, bag] : {std::pair{"sine", 0}, std::pair{"EOP", 1}})
+    {
+        name(phdr, n);
+        le16(phdr, 0), le16(phdr, 0), le16(phdr, static_cast<std::uint16_t>(bag));
+        le32(phdr, 0), le32(phdr, 0), le32(phdr, 0);
+    }
+    le16(pbag, 0), le16(pbag, 0), le16(pbag, 1), le16(pbag, 0);
+    le16(pgen, 41), le16(pgen, 0), le16(pgen, 0), le16(pgen, 0);  // instrument 0
+    name(inst, "sine"), le16(inst, 0), name(inst, "EOI"), le16(inst, 1);
+    le16(ibag, 0), le16(ibag, 0), le16(ibag, 2), le16(ibag, 0);
+    le16(igen, 54), le16(igen, 1);  // sampleModes: loop
+    le16(igen, 53), le16(igen, 0);  // sampleID 0
+    le16(igen, 0), le16(igen, 0);
+    name(shdr, "sine");
+    le32(shdr, 0), le32(shdr, kLen), le32(shdr, 0), le32(shdr, kLen), le32(shdr, 44100);
+    shdr.push_back(69), shdr.push_back(0), le16(shdr, 0), le16(shdr, 1);
+    name(shdr, "EOS");
+    for (int i = 0; i < 26; ++i)
+        shdr.push_back(0);
+
+    Bytes body{'s', 'f', 'b', 'k'};
+    for (const Bytes& l : {list("sdta", {chunk("smpl", smpl)}),
+                          list("pdta", {chunk("phdr", phdr), chunk("pbag", pbag), chunk("pmod", pmod),
+                                        chunk("pgen", pgen), chunk("inst", inst), chunk("ibag", ibag),
+                                        chunk("imod", imod), chunk("igen", igen), chunk("shdr", shdr)})})
+        body.insert(body.end(), l.begin(), l.end());
+    return chunk("RIFF", body);
+}
+
+// A format-0 MIDI file: one note (A4) held for `ticks` at 96 ticks per quarter, 120 bpm.
+inline Bytes oneNoteMidi(std::uint8_t ticks)
+{
+    Bytes track{0x00, 0xC0, 0x00, 0x00, 0x90, 0x45, 0x64, ticks, 0x80, 0x45, 0x00, 0x00, 0xFF, 0x2F, 0x00};
+    Bytes b{'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 'M', 'T', 'r', 'k', 0, 0, 0,
+            static_cast<std::uint8_t>(track.size())};
+    b.insert(b.end(), track.begin(), track.end());
+    return b;
 }
 
 }  // namespace fixture

@@ -127,6 +127,8 @@ bool runArt(Context& ctx, JsonWriter& m)
             continue;
         int w = static_cast<std::int16_t>(head[4] | (head[5] << 8));
         int h = static_cast<std::int16_t>(head[6] | (head[7] << 8));
+        if (w == 0 && h == 0)
+            continue;  // an empty slot (the archive's last entry is one), not a broken record
         if (w <= 0 || h <= 0 || w > 1024 || h > 1024)
         {
             ctx.warn("static " + hexName("art", g) + " claims " + std::to_string(w) + "x" + std::to_string(h));

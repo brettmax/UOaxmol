@@ -30,8 +30,7 @@ build/uo/tools/uoconvert/uoconvert --list  # stages
 | `--new-format`, `--old-format` | force the 7.0.9+ or older tiledata/multi layout (detected from `tiledata.mul` by default) |
 | `--no-radar` | skip the per-map radar PNGs |
 | `--client-version <v>` | client version the data is for (default `7.0.15.1`, as the client's Settings); the animation tables depend on it |
-| `--soundfont <sf2>` | General MIDI soundfont; with FluidSynth and `oggenc` or `ffmpeg` on PATH, renders `Music/*.mid` |
-| `--fluidsynth <exe>`, `--ogg-encoder <exe>` | override the tools used for MIDI |
+| `--soundfont <sf2>` | SoundFont 2 bank for rendering `Music/*.mid` (default: the client's own, see Music) |
 | `--spine <dir>` | Spine exports to check and copy |
 
 ## Output layout (layout version 1)
@@ -167,11 +166,20 @@ A reference reader lives in `uo/tools/uoconvert/src/UoMap.cpp` (`UoMapReader`); 
 
 ### Music
 
-`Music/*.mid` (the T2A soundtrack) becomes `Music/<same name>.ogg`, rendered with FluidSynth
-through the soundfont passed as `--soundfont`, then encoded with `oggenc -q 5` or ffmpeg's
-libvorbis. No soundfont ships in the repository; FluidR3_GM (MIT) or GeneralUser GS both work.
-Without the tools the MIDI files are listed in the manifest as pending. Digital music (`.mp3`)
-is copied untouched, since Axmol's AudioEngine plays it.
+`Music/*.mid` (the T2A soundtrack) becomes `Music/<same name>.ogg`, 44.1 kHz stereo Ogg Vorbis
+at `oggenc -q 5` quality. Rendering is built in, so no external tools are needed: TinySoundFont
+(vendored in `uoconvert/third_party`, MIT) plays the MIDI through a SoundFont 2 bank, and the
+libvorbis encoder Axmol already vendors in `3rdparty/ogg` writes the file. Tracks render in
+parallel (`--jobs`).
+
+The bank is `--soundfont` when given, else the one the client ships: UO:R discs carry
+`MUSIC/4mb/UO_4MB_2.SF2` (preferred) and `MUSIC/512K/UO_512.SF2`; otherwise the largest `.sf2`
+under `Music/`. Without any bank the MIDI files are listed in the manifest as pending. Digital
+music (`.mp3`) is copied untouched, since Axmol's AudioEngine plays it.
+
+The client finds the rendered tracks through its `assetsDirectory` setting (the `--out` folder):
+its music loader indexes `<assetsDirectory>/Music/**` before the UO folder's `Music/**` and picks
+`.mp3`, then `.ogg`, then `.wav` per track, so nothing has to be copied into the UO folder.
 
 ## Not converted here, and why
 

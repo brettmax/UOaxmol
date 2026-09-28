@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // Music and Spine. Neither is a UO binary format: music files are copied (mp3) or rendered
-// (MIDI -> Ogg Vorbis, which Axmol's AudioEngine plays and MIDI it cannot), and Spine exports
+// (MIDI -> Ogg Vorbis with the built-in synthesizer, since Axmol's AudioEngine cannot play MIDI), and Spine exports
 // are checked against the runtime version UOspine-axmol ships and copied.
+#include "Midi.h"
 #include "Stages.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <regex>
 #include <sstream>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -19,36 +23,6 @@ namespace uoconvert
 
 namespace
 {
-
-std::string quote(const std::string& s)
-{
-#if defined(_WIN32)
-    return "\"" + s + "\"";
-#else
-    std::string out = "'";
-    for (char c : s)
-        out += c == '\'' ? std::string("'\\''") : std::string(1, c);
-    return out + "'";
-#endif
-}
-
-bool onPath(const std::string& tool)
-{
-#if defined(_WIN32)
-    return std::system(("where " + quote(tool) + " >NUL 2>&1").c_str()) == 0;
-#else
-    return std::system(("command -v " + quote(tool) + " >/dev/null 2>&1").c_str()) == 0;
-#endif
-}
-
-std::string devNull()
-{
-#if defined(_WIN32)
-    return " >NUL 2>&1";
-#else
-    return " >/dev/null 2>&1";
-#endif
-}
 
 // ClassicUO's built-in track list, used when the client has no Music/Digital/Config.txt.
 const std::map<int, std::pair<const char*, bool>>& defaultTracks()
@@ -87,13 +61,35 @@ bool runMusic(Context& ctx, JsonWriter& m)
         return false;
     }
 
-    std::string encoder = ctx.opt.oggEncoder;
-    if (encoder.empty())
-        encoder = onPath("oggenc") ? "oggenc" : (onPath("ffmpeg") ? "ffmpeg" : "");
-    bool canRender = !ctx.opt.soundfont.empty() && fs::exists(ctx.opt.soundfont) && onPath(ctx.opt.fluidsynth) &&
-                     !encoder.empty();
+    // The soundfont: --soundfont, else the one the disc ships (UO:R has MUSIC/4mb/UO_4MB_2.SF2
+    // and MUSIC/512K/UO_512.SF2), else the largest .sf2 under Music/.
+    std::string soundfont = ctx.opt.soundfont;
+    if (soundfont.empty())
+        soundfont = ctx.data.find("Music/4mb/UO_4MB_2.SF2");
+    if (soundfont.empty())
+    {
+        std::uintmax_t best = 0;
+        for (const std::string& rel : files)
+        {
+            if (toLower(fs::path(rel).extension().string()) != ".sf2")
+                continue;
+            std::error_code ec;
+            std::string path = (fs::path(ctx.data.root()) / rel).string();
+            if (std::uintmax_t size = fs::file_size(path, ec); !ec && size > best)
+                best = size, soundfont = path;
+        }
+    }
+    MidiRenderer synth;
+    bool canRender = false;
+    if (!soundfont.empty())
+    {
+        canRender = synth.loadSoundFont(Context::readFile(soundfont));
+        if (!canRender)
+            ctx.warn("music: " + soundfont + " is not a readable SoundFont 2 bank");
+    }
 
-    std::size_t copied = 0, rendered = 0, pending = 0, failed = 0;
+    std::size_t copied = 0, pending = 0;
+    std::vector<std::pair<std::string, std::string>> midis;  // source relative path, output .ogg
     for (const std::string& rel : files)
     {
         std::string ext = toLower(fs::path(rel).extension().string());
@@ -105,36 +101,47 @@ bool runMusic(Context& ctx, JsonWriter& m)
         }
         else if (ext == ".mid" || ext == ".midi")
         {
-            // Same folder and base name, .ogg: the Audio thread's loader tries .mp3, .ogg, .wav.
-            std::string ogg = ctx.out(fs::path(rel).replace_extension(".ogg").generic_string());
-            if (!canRender)
-            {
+            // Same folder and base name, .ogg: the client's music loader looks in the converted
+            // tree first and tries .mp3, .ogg, .wav per track.
+            if (canRender)
+                midis.emplace_back(rel, ctx.out(fs::path(rel).replace_extension(".ogg").generic_string()));
+            else
                 ++pending;
-                continue;
-            }
-            std::string wav = ogg + ".tmp.wav";
-            // 44.1 kHz stereo 16-bit, FluidSynth's defaults made explicit.
-            std::string synth = quote(ctx.opt.fluidsynth) + " -ni -q -r 44100 -F " + quote(wav) + " " +
-                                quote(ctx.opt.soundfont) + " " + quote(src) + devNull();
-            std::string enc = encoder == "ffmpeg"
-                                  ? "ffmpeg -y -loglevel error -i " + quote(wav) + " -ar 44100 -ac 2 -c:a libvorbis -q:a 5 " +
-                                        quote(ogg) + devNull()
-                                  : quote(encoder) + " -Q -q 5 -o " + quote(ogg) + " " + quote(wav) + devNull();
-            bool ok = std::system(synth.c_str()) == 0 && std::system(enc.c_str()) == 0 && fs::exists(ogg);
-            std::error_code ec;
-            fs::remove(wav, ec);
-            if (ok)
+        }
+    }
+
+    // Tracks render in parallel, each on its own copy of the synthesizer.
+    std::atomic<std::size_t> next{0}, rendered{0};
+    std::mutex lock;
+    std::vector<std::string> failures;
+    auto worker = [&] {
+        for (std::size_t i; (i = next++) < midis.size();)
+        {
+            std::string error;
+            if (synth.renderToOgg(Context::readFile((fs::path(ctx.data.root()) / midis[i].first).string()),
+                                  midis[i].second, 0.5f, error))
                 ++rendered;
             else
             {
-                ++failed;
-                ctx.warn("could not render " + rel);
+                std::lock_guard g(lock);
+                failures.push_back(midis[i].first + ": " + error);
             }
         }
-    }
+    };
+    int jobs = ctx.opt.jobs > 0 ? ctx.opt.jobs : static_cast<int>(std::max(1u, std::thread::hardware_concurrency()));
+    jobs     = std::max(1, std::min<int>(jobs, static_cast<int>(midis.size())));
+    std::vector<std::thread> threads;
+    for (int t = 1; t < jobs && !midis.empty(); ++t)
+        threads.emplace_back(worker);
+    worker();
+    for (auto& t : threads)
+        t.join();
+    std::sort(failures.begin(), failures.end());
+    for (const std::string& f : failures)
+        ctx.warn("music: could not render " + f);
+    const std::size_t failed = failures.size();
     if (pending)
-        ctx.warn(std::to_string(pending) + " MIDI file(s) not rendered: pass --soundfont <GM .sf2> and install "
-                 "fluidsynth plus oggenc or ffmpeg");
+        ctx.warn(std::to_string(pending) + " MIDI file(s) not rendered: no SoundFont found; pass --soundfont <.sf2>");
 
     // music.json: the track table the server's 0x6D PlayMusic ids index, from Config.txt when present.
     std::map<int, std::pair<std::string, bool>> tracks;
@@ -170,7 +177,7 @@ bool runMusic(Context& ctx, JsonWriter& m)
     j.endObject().endObject();
     j.save(ctx.out("Music/music.json"));
 
-    m.field("copied", static_cast<std::uint64_t>(copied)).field("renderedMidi", static_cast<std::uint64_t>(rendered));
+    m.field("copied", static_cast<std::uint64_t>(copied)).field("renderedMidi", static_cast<std::uint64_t>(rendered.load()));
     m.field("pendingMidi", static_cast<std::uint64_t>(pending)).field("failedMidi", static_cast<std::uint64_t>(failed));
     m.field("tracks", static_cast<std::uint64_t>(tracks.size()));
     return true;
