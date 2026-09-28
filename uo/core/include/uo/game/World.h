@@ -71,8 +71,16 @@ struct JournalEntry
     std::uint32_t serial = 0;  // 0xFFFFFFFF for system messages
     std::string name;
     std::string text;
-    std::uint16_t hue = 0;
-    std::uint8_t type = 0;
+    std::uint16_t hue  = 0;
+    std::uint8_t type  = 0;
+    std::uint16_t font = 3;
+    bool unicode       = false;  // 0xAE/0xCC: render with unicode fonts, not fonts.mul
+    // 0xC1/0xCC cliloc messages: `text` is empty and the UI resolves clilocNumber with
+    // clilocArgs (tab-separated) through the cliloc table, so World needs no text assets.
+    std::uint32_t clilocNumber = 0;
+    std::string clilocArgs;
+    std::string affix;         // 0xCC only
+    bool affixPrepend = false; // 0xCC only
 };
 
 // Game state, mutated only by server packets and by the local walk prediction.
