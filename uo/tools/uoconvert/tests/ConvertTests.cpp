@@ -10,7 +10,12 @@
 #include "uo/assets/Gumps.h"
 #include "uo/assets/Lights.h"
 #include "uo/assets/Texmaps.h"
+#include "uo/anim/AnimationsLoader.h"
 #include "uo/io/Compression.h"
+#include "uo/sound/Wave.h"
+#include "uo/text/FontRenderer.h"
+
+#include "TextFixture.h"
 
 #include "doctest.h"
 
@@ -455,4 +460,224 @@ TEST_CASE("atlas planning never overlaps and respects the page size")
         placed += p.placements.size();
     }
     CHECK(placed == sprites.size());
+}
+
+TEST_CASE("gumps: zlib + BWT UOP entries decode too")
+{
+    Client c;
+    std::vector<std::uint16_t> px = {rgb15(9, 1, 1), rgb15(1, 9, 1), 0, rgb15(1, 1, 9)};
+    Bytes raw;
+    le32(raw, 2);
+    le32(raw, 2);
+    Bytes rows = encodeGump(2, 2, px);
+    raw.insert(raw.end(), rows.begin(), rows.end());
+    Bytes packed = uo::io::deflate(bwtEncode(raw));
+    c.dir.write("gumpartLegacyMUL.uop",
+                buildUop({{"build/gumpartlegacymul/00000004.tga", packed, 0, 3}}));
+
+    REQUIRE(c.run({"gumps"}) == 0);
+    std::string idx = slurp(c.out.path / "gumps" / "gumps.json");
+    int sheet, rect[4];
+    REQUIRE(findFrame(idx, 4, sheet, rect));
+    uo::assets::Image expect{2, 2, {}};
+    for (auto v : px)
+        expect.pixels.push_back(v ? uo::assets::color16To32(v) | uo::assets::kOpaque : 0);
+    checkBlit(loadPng(c.out.path / "gumps" / "gumps-000.png"), rect, expect);
+    CHECK(slurp(c.out.path / "manifest.json").find("compressedSkipped") == std::string::npos);
+}
+
+TEST_CASE("sounds: archive PCM becomes WAV, loose overrides are copied")
+{
+    Client c;
+    auto entry = [](const char* name, std::size_t pcm, std::uint8_t fill) {
+        Bytes e(40, 0);
+        std::memcpy(e.data(), name, std::strlen(name));
+        e.insert(e.end(), pcm, fill);
+        return e;
+    };
+    Indexed snd;
+    snd.add(0, entry("door.wav", 1000, 7));
+    snd.add(2, entry("bell.wav", 20, 1));
+    snd.write(c.dir, "sound.mul", "soundidx.mul");
+    fs::create_directories(c.dir.path / "Sounds");
+    c.dir.write("Sounds/2.wav", uo::sound::encodeWave(Bytes(64, 3)));
+
+    REQUIRE(c.run({"sounds"}) == 0);
+    fs::path out = c.out.path / "sounds";
+    Bytes wav;
+    {
+        std::ifstream f(out / "0.wav", std::ios::binary);
+        wav.assign(std::istreambuf_iterator<char>(f), {});
+    }
+    uo::sound::WaveFormat fmt;
+    std::span<const std::uint8_t> data;
+    REQUIRE(uo::sound::parseWave(wav, fmt, data));
+    CHECK(fmt.sampleRate == 22050);
+    CHECK(data.size() == 1000);
+    CHECK(data[0] == 7);
+    CHECK_FALSE(fs::exists(out / "1.wav"));
+    CHECK(fs::file_size(out / "2.wav") == 44 + 64);  // the override, not the archive's 20 bytes
+    std::string idx = slurp(out / "sounds.json");
+    CHECK(idx.find("\"0\":{\"file\":\"0.wav\",\"name\":\"door.wav\"") != std::string::npos);
+    CHECK(idx.find("\"2\":{\"file\":\"2.wav\"") != std::string::npos);
+}
+
+namespace
+{
+
+// anim.mul block: 256-colour palette, frame count and offsets, then per frame
+// { i16 cx, cy, w, h; runs of (x << 22 | y << 12 | length) + palette indices; 0x7FFF7FFF }.
+Bytes animBlock(const std::vector<std::tuple<int, int, int, int, std::uint8_t>>& frames)
+{
+    Bytes b;
+    for (int i = 0; i < 256; ++i)
+        le16(b, i == 0 ? 0 : static_cast<std::uint16_t>(i * 97 & 0x7FFF));
+    std::vector<Bytes> enc;
+    for (auto [cx, cy, w, h, colour] : frames)
+    {
+        Bytes e;
+        le16(e, static_cast<std::uint16_t>(cx));
+        le16(e, static_cast<std::uint16_t>(cy));
+        le16(e, static_cast<std::uint16_t>(w));
+        le16(e, static_cast<std::uint16_t>(h));
+        for (int y = 0; y < h; ++y)
+        {
+            const int rx = -cx, ry = y - cy - h;
+            le32(e, (static_cast<std::uint32_t>(rx & 0x3FF) << 22) | (static_cast<std::uint32_t>(ry & 0x3FF) << 12) |
+                        static_cast<std::uint32_t>(w));
+            for (int x = 0; x < w; ++x)
+                e.push_back(static_cast<std::uint8_t>(colour + x));
+        }
+        le32(e, 0x7FFF7FFF);
+        enc.push_back(std::move(e));
+    }
+    le32(b, static_cast<std::uint32_t>(frames.size()));
+    std::uint32_t at = 4 + 4 * static_cast<std::uint32_t>(frames.size());
+    for (const auto& e : enc)
+    {
+        le32(b, at);
+        at += static_cast<std::uint32_t>(e.size());
+    }
+    for (const auto& e : enc)
+        b.insert(b.end(), e.begin(), e.end());
+    return b;
+}
+
+}  // namespace
+
+TEST_CASE("anims: one sheet set per body, frames anchored at the feet")
+{
+    Client c;
+    // Body 1 is a high-detail monster: 22 actions x 5 directions from block 110.
+    std::map<std::uint32_t, Bytes> blocks;
+    blocks[110 + 0 * 5 + 0] = animBlock({{2, 3, 4, 5, 10}, {1, 0, 3, 2, 40}});
+    blocks[110 + 1 * 5 + 2] = animBlock({{0, 0, 2, 2, 90}});
+    Bytes idx, mul{0, 0, 0, 0};
+    for (std::uint32_t i = 0; i < 110 * 3; ++i)
+    {
+        if (auto it = blocks.find(i); it != blocks.end())
+        {
+            le32(idx, static_cast<std::uint32_t>(mul.size()));
+            le32(idx, static_cast<std::uint32_t>(it->second.size()));
+            le32(idx, 0);
+            mul.insert(mul.end(), it->second.begin(), it->second.end());
+        }
+        else
+        {
+            le32(idx, 0xFFFFFFFF), le32(idx, 0), le32(idx, 0);
+        }
+    }
+    c.dir.write("anim.idx", idx);
+    c.dir.write("anim.mul", mul);
+
+    REQUIRE(c.run({"anims"}) == 0);
+    fs::path out = c.out.path / "anims";
+    std::string bodies = slurp(out / "anims.json");
+    CHECK(bodies.find("\"1\":{\"index\":\"0x0001.json\",\"type\":\"monster\"") != std::string::npos);
+    CHECK(bodies.find("\"frames\":3") != std::string::npos);
+
+    uo::anim::AnimationsLoader loader;
+    uo::anim::AnimationsConfig cfg;
+    cfg.directory         = c.dir.path.string();
+    cfg.version           = uo::makeVersion(7, 0, 15, 1);
+    cfg.isUopInstallation = false;
+    REQUIRE(loader.load(cfg));
+    auto indices = loader.getIndices(1);
+    auto frames  = loader.readMulAnimationFrames(0, indices.directions[0]);
+    REQUIRE(frames.size() == 2);
+
+    std::string index = slurp(out / "0x0001.json");
+    int sheet, rect[4];
+    REQUIRE(findFrame(index, 1, sheet, rect));  // action 0, direction 0, frame 1
+    uo::assets::Image expect{frames[1].width, frames[1].height, frames[1].pixels};
+    checkBlit(loadPng(out / "0x0001-000.png"), rect, expect);
+    CHECK(index.find("\"name\":\"anim/0x0001/0/0/0\"") != std::string::npos);
+    CHECK(index.find("\"name\":\"anim/0x0001/1/2/0\"") != std::string::npos);
+    // Frame 0: centre (2, 3), 4 x 5, so the feet sit at x = 2/4, y = -3/5 from the bottom.
+    CHECK(index.find("\"anchor\":[0.5,-0.6]") != std::string::npos);
+    CHECK(slurp(out / "0x0001-000.plist").find("<key>anim/0x0001/0/0/1</key>") != std::string::npos);
+}
+
+namespace
+{
+
+// Reads "char id=<code> ..." from a BMFont text file into key -> value.
+std::map<std::string, int> fntChar(const std::string& fnt, int code)
+{
+    std::map<std::string, int> out;
+    std::istringstream in(fnt);
+    for (std::string line; std::getline(in, line);)
+    {
+        if (line.rfind("char id=" + std::to_string(code) + " ", 0) != 0)
+            continue;
+        std::istringstream words(line.substr(5));
+        for (std::string w; words >> w;)
+            if (auto eq = w.find('='); eq != std::string::npos)
+                out[w.substr(0, eq)] = std::stoi(w.substr(eq + 1));
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("fonts: BMFont pages match the client's own glyph rendering")
+{
+    Client c;
+    c.dir.write("fonts.mul", uotest::textfixture::fontsMul());
+    c.dir.write("unifont.mul", uotest::textfixture::unifontMul());
+
+    REQUIRE(c.run({"fonts"}) == 0);
+    fs::path out = c.out.path / "fonts";
+    std::string list = slurp(out / "fonts.json");
+    CHECK(list.find("\"name\":\"ascii0\"") != std::string::npos);
+    CHECK(list.find("\"name\":\"unifont0\"") != std::string::npos);
+
+    uo::text::FontRenderer fonts;
+    Bytes ascii = uotest::textfixture::fontsMul();
+    REQUIRE(fonts.loadAsciiFonts(ascii) > 0);
+    fonts.setUnicodeFont(0, uotest::textfixture::unifontMul());
+
+    auto check = [&](const std::string& name, char16_t ch, bool unicode) {
+        std::string fnt = slurp(out / (name + ".fnt"));
+        CHECK(fnt.find("page id=0 file=\"" + name + ".png\"") != std::string::npos);
+        auto g = fntChar(fnt, ch);
+        REQUIRE(!g.empty());
+        uo::text::TextBitmap bmp =
+            unicode ? fonts.generateUnicode(0, std::u16string(1, ch), 0, 30, 0, uo::text::TextAlign::Left, 0)
+                    : fonts.generateAscii(0, std::u16string(1, ch), 0, 0, uo::text::TextAlign::Left, 0);
+        CHECK(g["xadvance"] == (unicode ? fonts.charWidthUnicode(0, ch) : fonts.charWidthAscii(0, ch)));
+        REQUIRE(g["width"] > 0);
+        Png page = loadPng(out / (name + ".png"));
+        for (int y = 0; y < g["height"]; ++y)
+            for (int x = 0; x < g["width"]; ++x)
+            {
+                std::uint32_t src = bmp.pixels[static_cast<std::size_t>(y + g["yoffset"]) * bmp.width + x + g["xoffset"]];
+                if (unicode && src)
+                    src = 0xFFFFFFFFu;
+                CHECK(page.at(g["x"] + x, g["y"] + y) == src);
+            }
+    };
+    check("ascii0", u'A', false);
+    check("unifont0", u'!', true);
+    check("unifont0", u'\u0101', true);
 }

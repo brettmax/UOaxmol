@@ -4,6 +4,7 @@
 #include "Png.h"
 #include "Stages.h"
 
+#include "uo/assets/Bwt.h"
 #include "uo/assets/TileData.h"
 
 #include <chrono>
@@ -98,10 +99,11 @@ EntryBytes Context::entry(const uo::io::UOFile* file, std::uint32_t index, int v
         return out;
     }
     bool bwt = false;
-    if (!file->readDecompressed(*e, out.owned, &bwt) || bwt)
+    if (file->readDecompressed(*e, out.owned, &bwt) && bwt)
+        out.owned = uo::assets::bwtDecompress(out.owned);  // empty when malformed
+    if (out.owned.empty())
     {
         out.compressed = true;
-        out.owned.clear();
         return out;
     }
     out.bytes    = out.owned;
@@ -147,6 +149,9 @@ const std::vector<Stage>& stages()
         {"maps", "map/statics -> chunked .uomap files and radar images", runMaps},
         {"multis", "multi.mul -> data/multis.json", runMultis},
         {"animdata", "animdata.mul -> data/animdata.json", runAnimData},
+        {"sounds", "sound.mul -> sounds/<id>.wav and sounds.json", runSounds},
+        {"anims", "anim*.mul / AnimationFrame*.uop -> per-body animation sheets", runAnims},
+        {"fonts", "fonts.mul, unifont*.mul -> BMFont .fnt + .png", runFonts},
         {"music", "Music/ -> mp3 copies and MIDI rendered to Ogg Vorbis", runMusic},
         {"spine", "Spine exports -> validated copies under spine/", runSpine},
     };
