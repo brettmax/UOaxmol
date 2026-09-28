@@ -63,13 +63,13 @@ shard with synthetic data files, logs in, enters the world and saves a screensho
 | `Network/NetClient`, `Scenes/LoginScene` flow | `core/net/Session`, `PacketFramer` | done (unencrypted, as ModernUO accepts) |
 | `Network/OutgoingPackets` | `core/net/OutgoingPackets` | login, walk, speech, clicks |
 | `Network/PacketHandlers`, `Game/World`, `Game/GameObjects` | `core/world/` (`uo::world`) | entities, containers, equipment, corpses, speech, effects, targeting, trade, shops, books, party, skills; gumps and walking plug in through hooks |
-| `Assets/AnimationsLoader`, `AnimDataLoader` | `core/anim`, `client/Source/anim` | decoding and `MobileAnimationNode` done; not yet used by `WorldScene` |
-| `Assets/FontsLoader`, unifont, `Game/UI/Controls/RenderedText` | `core/text`, `client/text` | done; overhead text and journal views not yet wired |
-| `Assets/SoundsLoader`, `Game/Managers/AudioManager` | `core/sound`, `client/audio` | done; not yet wired to 0x54/0x6D |
+| `Assets/AnimationsLoader`, `AnimDataLoader` | `core/anim`, `client/Source/anim` | done; mobiles animate through the world renderer |
+| `Assets/FontsLoader`, unifont, `Game/UI/Controls/RenderedText` | `core/text`, `client/text` | done; journal, overhead speech and gump text use UO fonts |
+| `Assets/SoundsLoader`, `Game/Managers/AudioManager` | `core/sound`, `client/audio` | done, playing 0x54 sounds and 0x6D music |
 | `Assets/TexmapsLoader`, `LightsLoader`, `MultiLoader`, verdata | `core/assets`, `tools/uoconvert` | done; `uoconvert` bakes atlases offline |
 | `Game/Managers/Pathfinder`, walking | `core/movement`, `client/input` | done, wired into `WorldScene` |
-| `Renderer/*`, `Game/Scenes/GameScene` | `core/render`, `client/world` | `WorldRenderer` done; `WorldScene` still draws its own placeholder view |
-| `Game/UI/Gumps/*` | `core/gumps`, `client/Source/gumps` | done; not yet installed in `GameClient` |
+| `Renderer/*`, `Game/Scenes/GameScene` | `core/render`, `client/world` | done; `WorldScene` draws through `WorldRenderer` with pixel picking |
+| `Game/UI/Gumps/*` | `core/gumps`, `client/Source/gumps` | done; server gumps, containers, paperdoll, status and skills |
 | `Network/Encryption/*` | — | not needed for ModernUO |
 
 Source files derived from ClassicUO keep its BSD-2-Clause license and say which C# file
