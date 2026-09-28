@@ -103,7 +103,7 @@ bool Installation::load(const Options& options)
     _gumps = std::make_unique<Gumps>(std::move(gumps), &_hues);
 
     // A missing cliloc is survivable: pre-AOS shards send plain text.
-    _cliloc.load(path("cliloc." + options.language));
+    _cliloc.load(*this, options.language);
 
     // Sounds are survivable too: the client plays silence rather than refusing to start.
     sound::SoundLoader::Options soundOptions;
