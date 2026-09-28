@@ -241,6 +241,7 @@ WorldMap::Block& WorldMap::loadBlock(int blockX, int blockY)
                 continue;
             }
 
+            lc.graphic        = _seasons->landGraphic(_season, lc.graphic);
             LandTileData data = _tiles.land(lc.graphic);
 
             WorldObject land;
@@ -271,16 +272,21 @@ WorldMap::Block& WorldMap::loadBlock(int blockX, int blockY)
             continue;
         }
 
-        StaticTileData data = _tiles.item(s.graphic);
+        const uint16_t graphic = _seasons->staticGraphic(_season, s.graphic);
+        if (static_cast<int>(graphic) >= _tiles.itemCount())
+        {
+            continue;
+        }
+        StaticTileData data = _tiles.item(graphic);
 
         WorldObject st;
         st.kind             = ObjectKind::Static;
-        st.graphic          = s.graphic;
+        st.graphic          = graphic;
         st.hue              = s.hue;
         st.x                = static_cast<uint16_t>(bx + s.x);
         st.y                = static_cast<uint16_t>(by + s.y);
         st.z                = s.z;
-        st.allowedToDraw    = canDrawStatic(s.graphic, data);
+        st.allowedToDraw    = canDrawStatic(graphic, data);
         st.canBeTransparent = computeCanBeTransparent(data);
 
         insert(block.cells[(s.y << 3) + s.x], std::move(st));
@@ -309,6 +315,47 @@ const WorldMap::Cell* WorldMap::cellAt(int x, int y) const
 
     const Block* b = findBlock(x / kBlockSize, y / kBlockSize);
     return b ? &b->cells[((y % kBlockSize) << 3) + (x % kBlockSize)] : nullptr;
+}
+
+void WorldMap::setSeason(SeasonId season, const SeasonTable* table)
+{
+    const SeasonTable* seasons = table ? table : &SeasonTable::defaults();
+    if (season == _season && seasons == _seasons)
+    {
+        return;
+    }
+    _season  = season;
+    _seasons = seasons;
+
+    // Reload land and statics with the new graphics; carry dynamic objects over.
+    std::vector<std::pair<int, int>> loaded;
+    loaded.reserve(_blocks.size());
+    for (const auto& [k, b] : _blocks)
+    {
+        loaded.emplace_back(b.blockX, b.blockY);
+    }
+
+    std::vector<WorldObject> dynamic;
+    for (const auto& [bx, by] : loaded)
+    {
+        dynamic.clear();
+        for (const Cell& cell : _blocks[key(bx, by)].cells)
+        {
+            for (const WorldObject& obj : cell)
+            {
+                if (obj.kind != ObjectKind::Land && obj.kind != ObjectKind::Static)
+                {
+                    dynamic.push_back(obj);
+                }
+            }
+        }
+
+        Block& block = loadBlock(bx, by);
+        for (WorldObject& obj : dynamic)
+        {
+            insert(block.cells[((obj.y % kBlockSize) << 3) + (obj.x % kBlockSize)], std::move(obj));
+        }
+    }
 }
 
 int WorldMap::calculateNearZ(int defaultZ, int x, int y, int z) const
@@ -610,6 +657,12 @@ void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out,
                 StaticTileData data = _tiles.item(obj.graphic);
 
                 if (view.hideRoofs && data.is(assets::TF_Roof))
+                {
+                    continue;
+                }
+
+                // Bare branches in winter: foliage of statics and ground items is hidden.
+                if ((obj.kind == ObjectKind::Static || obj.kind == ObjectKind::Item) && !foliageVisibleAtSeason(data, _season))
                 {
                     continue;
                 }

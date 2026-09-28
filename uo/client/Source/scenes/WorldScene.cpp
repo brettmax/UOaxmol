@@ -323,6 +323,19 @@ void WorldScene::update(float dt)
         centerCamera();
     }
 
+    // The server's season (0xBC) swaps land and static graphics and hides winter foliage.
+    static_assert(static_cast<int>(uo::world::Season::Winter) == static_cast<int>(uo::render::SeasonId::Winter) &&
+                  static_cast<int>(uo::world::Season::Desolation) == static_cast<int>(uo::render::SeasonId::Desolation));
+    if (_map)
+    {
+        const auto season = static_cast<uo::render::SeasonId>(gc.world().season);
+        if (season != _map->season())
+        {
+            _map->setSeason(season);
+            _drawListDirty = true;
+        }
+    }
+
     // Steps completed this frame move mobiles to new tiles; then their frames advance. The draw
     // list holds frame pointers, so it is rebuilt whenever the animator reports a change.
     syncMobileTiles();

@@ -728,3 +728,80 @@ TEST_CASE("view Z limits follow GameScene.UpdateMaxDrawZ")
         CHECK(v.maxGroundZ == 16);
     }
 }
+
+TEST_CASE("seasons swap graphics and hide winter foliage like SeasonManager")
+{
+    const SeasonTable& defaults = SeasonTable::defaults();
+    CHECK(defaults.staticGraphic(SeasonId::Spring, 0x0CA7) == 0x0C84);
+    CHECK(defaults.staticGraphic(SeasonId::Summer, 0x0CA7) == 0x0CA7);
+    CHECK(defaults.landGraphic(SeasonId::Winter, 196) == 282);
+    CHECK(defaults.landGraphic(SeasonId::Summer, 196) == 196);
+
+    SeasonTable custom;
+    custom.parse("# comment\n// another\nwinter, static, 0x10, 20\r\nFALL,landtile,3,0x5\nbad,line\n");
+    CHECK(custom.staticGraphic(SeasonId::Winter, 0x10) == 20);
+    CHECK(custom.landGraphic(SeasonId::Fall, 3) == 5);
+    CHECK(custom.landGraphic(SeasonId::Winter, 3) == 3);
+
+    constexpr uint16_t kLeaves = 0x0200, kWinterTree = 0x0201, kSummerTree = 0x0202;
+    custom.set(SeasonId::Winter, false, kSummerTree, kWinterTree);
+    custom.set(SeasonId::Winter, true, 3, 4);
+
+    FakeMap map(8, 8);
+    FakeTiles tiles;
+    tiles.items[kLeaves]     = {assets::TF_Foliage, 10};
+    tiles.items[kSummerTree] = {assets::TF_Impassable, 20};
+    tiles.items[kWinterTree] = {assets::TF_Impassable, 20};
+    map.addStatic(1, 1, 0, kLeaves);
+    map.addStatic(2, 2, 0, kSummerTree);
+
+    WorldMap world(map, tiles);
+    world.setSeason(SeasonId::Summer, &custom);
+    ViewParams view;
+    view.maxTileX = 7, view.maxTileY = 7;
+    world.ensureLoaded(view);
+
+    WorldObject item;
+    item.kind   = ObjectKind::Item;
+    item.serial = 0x40000009;
+    item.x = item.y = 3;
+    item.graphic    = 0x0300;
+    REQUIRE(world.addObject(item));
+
+    auto count = [&](uint16_t g) {
+        std::vector<DrawItem> list;
+        world.buildDrawList(view, list);
+        int n = 0;
+        for (const DrawItem& d : list)
+        {
+            n += d.graphic == g;
+        }
+        return n;
+    };
+    auto landGraphic = [&](int x, int y) {
+        for (const WorldObject& o : *world.cellAt(x, y))
+        {
+            if (o.kind == ObjectKind::Land)
+            {
+                return o.graphic;
+            }
+        }
+        return uint16_t(0);
+    };
+
+    CHECK(count(kLeaves) == 1);
+    CHECK(count(kSummerTree) == 1);
+    CHECK(landGraphic(4, 4) == 3);
+
+    world.setSeason(SeasonId::Winter, &custom);
+    CHECK(world.season() == SeasonId::Winter);
+    CHECK(count(kLeaves) == 0);
+    CHECK(count(kSummerTree) == 0);
+    CHECK(count(kWinterTree) == 1);
+    CHECK(landGraphic(4, 4) == 4);
+    CHECK(count(0x0300) == 1);  // dynamic objects survive the reload
+
+    world.setSeason(SeasonId::Summer, &custom);
+    CHECK(count(kLeaves) == 1);
+    CHECK(landGraphic(4, 4) == 3);
+}
