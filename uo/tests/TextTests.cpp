@@ -7,7 +7,9 @@
 #include "uo/assets/Cliloc.h"
 #include "uo/text/FontRenderer.h"
 #include "uo/text/JournalText.h"
+#include "uo/text/NameOverhead.h"
 #include "uo/text/SpeechText.h"
+#include "uo/text/TextEdit.h"
 #include "uo/text/Utf.h"
 #include "uo/text/WorldClilocs.h"
 
@@ -730,4 +732,151 @@ TEST_CASE("journal lines, affixes and fonts follow the original")
     CHECK(text::speechFont(0, true, fx.fonts).font == 0);
     CHECK(text::speechFont(40, false, fx.fonts).font == 3);
     CHECK(text::speechFont(6, false, fx.fonts).font == 6);
+}
+
+namespace
+{
+struct CaretCase
+{
+    bool unicode;
+    int font, flags, width, align;
+    const char* text;
+    const char* expected;  // "x,y" for every pos from 0 to length + 1
+};
+
+// GetCaretPosASCII/GetCaretPosUnicode of the original over the fixture. Right-aligned
+// text keeps the original's quirk of starting the caret at the right edge.
+const CaretCase kCaretCases[] = {
+    {true, 0, 0, 0, 0, "Hello world",
+     "0,0 9,0 19,0 32,0 40,0 46,0 59,0 67,0 73,0 73,0 73,0 73,0 73,0"},
+    {true, 0, 0, 60, 0, "wrap this text over lines",
+     "0,0 6,0 14,0 25,0 37,0 0,18 5,18 7,18 18,18 23,18 0,36 5,36 15,36 27,36 32,36 0,54 13,54 27,54 37,54 45,54 0,72 0,72 11,72 23,72 33,72 38,72 60,72"},
+    {true, 0, 0, 80, 1, "centered\nsecond",
+     "8,0 10,0 20,0 32,0 37,0 47,0 55,0 65,0 71,0 16,19 21,19 31,19 33,19 46,19 58,19 64,19 80,19"},
+    {true, 0, 0, 80, 2, "right aligned",
+     "80,0 88,0 99,0 109,0 111,0 116,0 80,18 91,18 102,18 112,18 124,18 134,18 140,18 80,18 80,18"},
+    {true, 1, 0, 0, 0, "font one",
+     "0,0 8,0 21,0 33,0 38,0 46,0 59,0 71,0 81,0 81,0"},
+    {false, 1, 0, 0, 0, "ascii text",
+     "0,0 1,0 3,0 9,0 11,0 13,0 19,0 22,0 26,0 34,0 37,0 37,0"},
+    {false, 3, 0, 50, 1, "ascii wrapped line here",
+     "0,0 4,0 6,0 6,0 10,0 14,0 18,0 26,0 28,0 32,0 33,0 34,0 40,0 49,0 2,13 9,13 13,13 23,13 29,13 33,13 36,13 42,13 44,13 50,13 50,13"},
+    {true, 0, 0, 40, 0, "a  b\r\nc",
+     "0,0 11,0 19,0 27,0 27,0 2,9 0,9 2,9 40,9"},
+};
+}  // namespace
+
+TEST_CASE("caret positions match the original client on the fixture")
+{
+    Fixture fx;
+    const auto& r = fx.fonts;
+
+    for (const auto& c : kCaretCases)
+    {
+        CAPTURE(c.text);
+        const std::u16string s = text::utf8ToUtf16(c.text);
+        const auto al          = static_cast<text::TextAlign>(c.align);
+        const auto f           = static_cast<std::uint8_t>(c.font);
+        const auto fl          = static_cast<std::uint16_t>(c.flags);
+        std::string actual;
+
+        for (int pos = 0; pos <= static_cast<int>(s.size()) + 1; ++pos)
+        {
+            auto [x, y] = c.unicode ? r.caretPosUnicode(f, s, pos, c.width, al, fl)
+                                    : r.caretPosAscii(f, s, pos, c.width, al, fl);
+            actual += (pos ? " " : "") + std::to_string(x) + "," + std::to_string(y);
+        }
+
+        CHECK(actual == c.expected);
+
+        // Clicking on a drawn caret puts the caret at a position drawn at the same point.
+        for (int pos = 0; pos <= static_cast<int>(s.size()); ++pos)
+        {
+            CAPTURE(pos);
+            auto caret     = c.unicode ? r.caretPosUnicode(f, s, pos, c.width, al, fl)
+                                       : r.caretPosAscii(f, s, pos, c.width, al, fl);
+            const int back = c.unicode ? r.caretIndexUnicode(f, s, caret.first, caret.second, c.width, al, fl)
+                                       : r.caretIndexAscii(f, s, caret.first, caret.second, c.width, al, fl);
+            auto again     = c.unicode ? r.caretPosUnicode(f, s, back, c.width, al, fl)
+                                       : r.caretPosAscii(f, s, back, c.width, al, fl);
+            CHECK(again == caret);
+        }
+    }
+}
+
+TEST_CASE("caret hit-test picks the line, then the nearest caret on it")
+{
+    Fixture fx;
+    const auto& r          = fx.fonts;
+    const std::u16string s = u"wrap this text over lines";
+
+    // Line 1 holds "wrap this " (caret x 0..37 for pos 0..4), line 2 starts at pos 5 at y 18.
+    CHECK(r.caretIndexUnicode(0, s, -5, -5, 60, text::TextAlign::Left, 0) == 0);
+    CHECK(r.caretIndexUnicode(0, s, 13, 3, 60, text::TextAlign::Left, 0) == 2);
+    CHECK(r.caretIndexUnicode(0, s, 1000, 3, 60, text::TextAlign::Left, 0) == 4);
+    CHECK(r.caretIndexUnicode(0, s, 0, 20, 60, text::TextAlign::Left, 0) == 5);
+    CHECK(r.caretIndexUnicode(0, s, 1000, 1000, 60, text::TextAlign::Left, 0) == static_cast<int>(s.size()));
+    CHECK(r.caretIndexUnicode(0, u"", 10, 10, 60, text::TextAlign::Left, 0) == 0);
+}
+
+TEST_CASE("name plates follow the original's notoriety hues and width limit")
+{
+    Fixture fx;
+    CHECK(text::notorietyHue(world::Notoriety::Innocent) == 0x005A);
+    CHECK(text::notorietyHue(world::Notoriety::Murderer) == 0x0023);
+    CHECK(text::notorietyHue(world::Notoriety::Unknown) == 0);
+
+    const auto shortName = text::nameOverheadText(fx.fonts, 0, u"Bob");
+    CHECK(shortName.text == u"Bob");
+    CHECK(shortName.width == fx.fonts.widthUnicode(0, u"Bob"));
+
+    const std::u16string longName = u"Lord British the Very Long Named Ruler of Britannia";
+    const auto cut                = text::nameOverheadText(fx.fonts, 0, longName);
+    CHECK(cut.width == text::kNameOverheadWidth);
+    CHECK(cut.text == fx.fonts.textByWidthUnicode(0, longName, text::kNameOverheadWidth, true));
+    CHECK(cut.text.size() < longName.size());
+}
+
+TEST_CASE("text entries edit like the original's text box")
+{
+    text::TextEdit edit(5);
+    CHECK(edit.setText(u"abcdefg"));
+    CHECK(edit.text() == u"abcde");
+    CHECK(edit.caret() == 5);
+    CHECK_FALSE(edit.insert(u"x"));  // full
+
+    CHECK(edit.deleteBackward());
+    edit.moveHome();
+    CHECK(edit.insert(u"XYZ"));  // pasted input is cut to the room left
+    CHECK(edit.text() == u"Xabcd");
+    CHECK(edit.caret() == 1);
+
+    edit.moveRight();
+    CHECK(edit.deleteForward());
+    CHECK(edit.text() == u"Xacd");
+    edit.moveEnd();
+    CHECK_FALSE(edit.deleteForward());
+    edit.setCaret(99);
+    CHECK(edit.caret() == 4);
+
+    // Single-line entries drop newlines; multiline ones keep them.
+    text::TextEdit line;
+    CHECK_FALSE(line.insert(u"\n"));
+    CHECK(line.insert(u"a\r\nb"));
+    CHECK(line.text() == u"ab");
+    text::TextEdit multi(-1, true);
+    CHECK(multi.insert(u"a\nb"));
+    CHECK(multi.text() == u"a\nb");
+
+    // A typed character the font cannot draw is refused; a paste is not filtered.
+    text::TextEdit printable;
+    printable.setPrintable([](char16_t c) { return c != u'~'; });
+    CHECK_FALSE(printable.insert(u"~"));
+    CHECK(printable.insert(u"a~"));
+
+    text::TextEdit digits;
+    digits.setNumbersOnly(true);
+    CHECK_FALSE(digits.insert(u"1a"));
+    CHECK(digits.insert(u"42"));
+    CHECK(digits.text() == u"42");
 }

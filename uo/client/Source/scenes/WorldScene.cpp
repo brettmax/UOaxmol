@@ -4,6 +4,7 @@
 #include "GameClient.h"
 #include "axmol/JournalView.h"
 #include "axmol/OverheadTextLayer.h"
+#include "axmol/TextFactory.h"
 #include "axmol/TextSystem.h"
 #include "InputRouter.h"
 #include "LoginScene.h"
@@ -17,6 +18,8 @@
 #include "uo/net/OutgoingPackets.h"
 #include "uo/render/HueTexture.h"
 #include "uo/text/JournalText.h"
+#include "uo/text/NameOverhead.h"
+#include "uo/text/Utf.h"
 
 #include <algorithm>
 #include <cmath>
@@ -52,6 +55,53 @@ Color32 notorietyColor(uo::world::Notoriety notoriety)
     case 6: return Color32(230, 40, 40, 255);    // murderer
     case 7: return Color32(240, 240, 80, 255);   // invulnerable
     default: return Color32(200, 200, 200, 255);
+    }
+}
+
+// A mobile's name plate as ClassicUO's NameOverheadGump draws it: unicode font 0xFF with a
+// black border, centered, in the notoriety hue, cut to 100 pixels. Falls back to a TTF label
+// until the UO fonts are loaded.
+constexpr float kNamePlateY = 58.f;
+
+Node* createNamePlate()
+{
+    Node* plate = nullptr;
+    if (uo::client::text::TextSystem::instance().ready())
+        plate = uo::client::text::TextLabel::create("", uo::client::text::TextStyle{});
+    if (!plate)
+    {
+        auto* label = Label::createWithTTF("", kFont, 13);
+        label->enableOutline(Color32::black, 1);
+        plate = label;
+    }
+    plate->setAnchorPoint(Vec2(0.5f, 0.5f));
+    plate->setPosition(Vec2(0, kNamePlateY));
+    plate->setName("name");
+    return plate;
+}
+
+void updateNamePlate(Node* plate, const uo::world::Mobile& mobile)
+{
+    if (auto* label = dynamic_cast<uo::client::text::TextLabel*>(plate))
+    {
+        auto& system            = uo::client::text::TextSystem::instance();
+        const std::uint8_t font = system.resolveFont(0xFF);
+        const auto name = uo::text::nameOverheadText(system.fonts(), font, uo::text::utf8ToUtf16(mobile.name));
+
+        uo::client::text::TextStyle style;
+        style.font     = 0xFF;
+        style.unicode  = true;
+        style.hue      = uo::text::notorietyHue(mobile.notoriety);
+        style.maxWidth = name.width;
+        style.border   = true;
+        style.align    = uo::text::TextAlign::Center;
+        // An empty name renders nothing and the label hides itself.
+        label->setContent(uo::text::utf16ToUtf8(name.text), style);
+    }
+    else if (auto* ttf = dynamic_cast<Label*>(plate))
+    {
+        ttf->setString(mobile.name);
+        ttf->setTextColor(notorietyColor(mobile.notoriety));
     }
 }
 }  // namespace
@@ -745,12 +795,8 @@ void WorldScene::syncEntity(const uo::world::Entity& e)
         if (e.isMobile())
         {
             // The body is drawn by the renderer; this node carries the notoriety-coloured name.
-            node      = Node::create();
-            auto name = Label::createWithTTF(e.name, kFont, 13);
-            name->setPosition(Vec2(0, 58));
-            name->enableOutline(Color32::black, 1);
-            name->setName("name");
-            node->addChild(name);
+            node = Node::create();
+            node->addChild(createNamePlate());
         }
         else
         {
@@ -769,11 +815,8 @@ void WorldScene::syncEntity(const uo::world::Entity& e)
     {
         addMobile(*mobile);
         // Notoriety can arrive after creation (0x78 fills it in after the entity exists).
-        if (auto* name = dynamic_cast<Label*>(node->getChildByName("name")))
-        {
-            name->setString(e.name);
-            name->setTextColor(notorietyColor(mobile->notoriety));
-        }
+        if (Node* plate = node->getChildByName("name"))
+            updateNamePlate(plate, *mobile);
         node->setPosition(mobilePosition(e));
     }
     else
