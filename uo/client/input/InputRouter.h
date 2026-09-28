@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // Axmol side of movement and targeting input. Ported from ClassicUO's GameSceneInputHandler (mouse
 // buttons, arrow keys, Escape) and Input/Mouse (double-click timing). The decisions live in uocore
-// (uo::movement::MovementInput, uo::game::TargetCursor); this class only turns Axmol pointer and
+// (uo::movement::MovementInput, uo::world::Targeting); this class only turns Axmol pointer and
 // keyboard events into calls on them and into callbacks for the game scene.
 
 #pragma once

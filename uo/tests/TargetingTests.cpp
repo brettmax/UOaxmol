@@ -1,184 +1,204 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#include "uo/game/TargetCursor.h"
+#include "uo/world/PacketHandlers.h"
+#include "uo/world/Targeting.h"
+#include "uo/world/World.h"
 
 #include "doctest.h"
 
 #include <vector>
 
-using namespace uo::game;
+using namespace uo::world;
 
 namespace
 {
 
-struct Harness
+struct Rig
 {
+    World world;
+    PacketHandlers handlers;
     std::vector<std::vector<uint8_t>> sent;
-    std::vector<uint32_t> statusRequests;
     int multiCleared = 0;
     bool answerQuery = true;
     std::function<void()> pendingQuery;
+    Targeting targeting{world, hooks()};
 
-    TargetCursor make()
+    Rig()
     {
-        TargetCursorHooks hooks;
-        hooks.send = [this](std::span<const uint8_t> b) { sent.emplace_back(b.begin(), b.end()); };
-        hooks.requestMobileStatus = [this](uint32_t s) { statusRequests.push_back(s); };
-        hooks.clearMultiPreview = [this] { multiCleared++; };
-        hooks.askCriminalAction = [this](std::function<void()> proceed) {
+        targeting.install(handlers);
+        Player& p = world.createPlayer(0x00000001);
+        p.notoriety = Notoriety::Innocent;
+        world.mapIndex = 0;
+    }
+
+    TargetingHooks hooks()
+    {
+        TargetingHooks h;
+        h.send = [this](std::span<const uint8_t> b) { sent.emplace_back(b.begin(), b.end()); };
+        h.clearMultiPreview = [this] { multiCleared++; };
+        h.askCriminalAction = [this](std::function<void()> proceed) {
             pendingQuery = std::move(proceed);
             return answerQuery;
         };
-        return TargetCursor(std::move(hooks));
+        return h;
+    }
+
+    void serverTarget(uint8_t state, uint32_t cursor, uint8_t type)
+    {
+        std::vector<uint8_t> p{0x6C, state, static_cast<uint8_t>(cursor >> 24), static_cast<uint8_t>(cursor >> 16),
+                               static_cast<uint8_t>(cursor >> 8), static_cast<uint8_t>(cursor), type};
+        p.resize(19, 0);
+        handlers.handle(world, p, 1);
+    }
+
+    Mobile& mobile(Serial s, uint16_t x, uint16_t y, int8_t z, Notoriety n)
+    {
+        Mobile& m = world.getOrCreateMobile(s);
+        m.graphic = 0x0011;
+        m.x = x;
+        m.y = y;
+        m.z = z;
+        m.notoriety = n;
+        return m;
     }
 };
-
-std::vector<uint8_t> serverTarget(uint8_t state, uint32_t cursor, uint8_t type)
-{
-    std::vector<uint8_t> p{0x6C, state, static_cast<uint8_t>(cursor >> 24), static_cast<uint8_t>(cursor >> 16),
-                           static_cast<uint8_t>(cursor >> 8), static_cast<uint8_t>(cursor), type};
-    p.resize(19, 0);
-    return p;
-}
 
 }  // namespace
 
 TEST_CASE("targeting: server cursor, object target and packet layout")
 {
-    Harness h;
-    TargetCursor tc = h.make();
+    Rig rig;
+    rig.serverTarget(0, 0x01020304, 1);
+    CHECK(rig.world.target.isTargeting);
+    CHECK(rig.world.target.state == CursorTarget::Object);
+    CHECK(rig.world.target.type == TargetType::Harmful);
 
-    REQUIRE(tc.handleServerTarget(serverTarget(0, 0x01020304, 1)));
-    CHECK(tc.isTargeting());
-    CHECK(tc.state() == CursorTarget::Object);
-    CHECK(tc.type() == TargetType::Harmful);
+    rig.mobile(0x00001234, 1500, 1600, -3, Notoriety::Enemy);
+    rig.targeting.target(0x00001234);
 
-    TargetEntity orc{0x00001234, 0x0011, 1500, 1600, -3, 1, Notoriety::Enemy, false};
-    tc.target(orc, Notoriety::Innocent, TargetOptions{});
-
-    REQUIRE(h.sent.size() == 1);
+    REQUIRE(rig.sent.size() == 1);
     const std::vector<uint8_t> expect{0x6C, 0x00, 0x01, 0x02, 0x03, 0x04, 0x01, 0x00, 0x00, 0x12,
                                       0x34, 0x05, 0xDC, 0x06, 0x40, 0xFF, 0xFD, 0x00, 0x11};
-    CHECK(h.sent[0] == expect);
-    CHECK_FALSE(tc.isTargeting());
-    CHECK(tc.lastTarget().serial == 0x1234);
-    CHECK(tc.lastTarget().isEntity());
+    CHECK(rig.sent[0] == expect);
+    CHECK_FALSE(rig.targeting.isTargeting());
+    CHECK(rig.targeting.lastTarget().serial == 0x1234);
+    CHECK(rig.targeting.lastTarget().isEntity());
 }
 
 TEST_CASE("targeting: land and statics send position targets")
 {
-    Harness h;
-    TargetCursor tc = h.make();
+    Rig rig;
 
     // Object cursors ignore land.
-    tc.setTargeting(CursorTarget::Object, 7, TargetType::Neutral);
-    tc.target(0, 100, 200, 5, 0, TargetOptions{});
-    CHECK(h.sent.empty());
-    CHECK(tc.isTargeting());
+    rig.serverTarget(0, 7, 0);
+    rig.targeting.target(0, 100, 200, 5);
+    CHECK(rig.sent.empty());
+    CHECK(rig.targeting.isTargeting());
 
-    tc.setTargeting(CursorTarget::Position, 7, TargetType::Neutral);
-    tc.target(0x0B10, 100, 200, 5, 6, TargetOptions{});  // a 6-high surface: target its top
-    REQUIRE(h.sent.size() == 1);
-    CHECK(h.sent[0][1] == 0x01);
-    CHECK(h.sent[0][16] == 11);
-    CHECK((h.sent[0][17] == 0x0B && h.sent[0][18] == 0x10));
-    CHECK(tc.lastTarget().isStatic());
+    rig.serverTarget(1, 7, 0);
+    rig.targeting.target(0x0B10, 100, 200, 5, 6);  // a 6-high surface: target its top
+    REQUIRE(rig.sent.size() == 1);
+    CHECK(rig.sent[0][1] == 0x01);
+    CHECK(rig.sent[0][16] == 11);
+    CHECK((rig.sent[0][17] == 0x0B && rig.sent[0][18] == 0x10));
+    CHECK(rig.targeting.lastTarget().isStatic());
 
     // Target-last replays the body under the new cursor.
-    tc.setTargeting(CursorTarget::Position, 9, TargetType::Beneficial);
-    tc.targetLast();
-    REQUIRE(h.sent.size() == 2);
-    CHECK(h.sent[1][5] == 9);
-    CHECK(h.sent[1][6] == 2);
-    CHECK(h.sent[1][16] == 11);
+    rig.serverTarget(1, 9, 2);
+    rig.targeting.targetLast();
+    REQUIRE(rig.sent.size() == 2);
+    CHECK(rig.sent[1][5] == 9);
+    CHECK(rig.sent[1][6] == 2);
+    CHECK(rig.sent[1][16] == 11);
 }
 
 TEST_CASE("targeting: cancel, and server cancel answers with the old cursor")
 {
-    Harness h;
-    TargetCursor tc = h.make();
+    Rig rig;
 
-    tc.setTargeting(CursorTarget::Object, 5, TargetType::Neutral);
-    tc.cancel();
-    REQUIRE(h.sent.size() == 1);
-    CHECK(h.sent[0] == std::vector<uint8_t>{0x6C, 0x00, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0});
-    CHECK_FALSE(tc.isTargeting());
+    rig.serverTarget(0, 5, 0);
+    rig.targeting.cancel();
+    REQUIRE(rig.sent.size() == 1);
+    CHECK(rig.sent[0] ==
+          std::vector<uint8_t>{0x6C, 0x00, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0});
+    CHECK_FALSE(rig.targeting.isTargeting());
 
-    h.sent.clear();
-    tc.setTargeting(CursorTarget::Object, 5, TargetType::Neutral);
-    tc.handleServerTarget(serverTarget(0, 9, 3));
-    REQUIRE(h.sent.size() == 1);
-    CHECK(h.sent[0][5] == 5);
-    CHECK(h.sent[0][6] == 3);
-    CHECK_FALSE(tc.isTargeting());
-    CHECK(tc.cursorId() == 9);
+    rig.sent.clear();
+    rig.serverTarget(0, 5, 0);
+    rig.serverTarget(0, 9, 3);
+    REQUIRE(rig.sent.size() == 1);
+    CHECK(rig.sent[0][5] == 5);
+    CHECK(rig.sent[0][6] == 3);
+    CHECK_FALSE(rig.targeting.isTargeting());
+    CHECK(rig.world.target.cursorId == 9);
 }
 
 TEST_CASE("targeting: harmful action on an innocent asks first")
 {
-    Harness h;
-    TargetCursor tc = h.make();
-    tc.setTargeting(CursorTarget::Object, 1, TargetType::Harmful);
+    Rig rig;
+    rig.mobile(0x00000077, 10, 10, 0, Notoriety::Innocent);
 
-    TargetEntity blue{0x00000077, 0x0190, 10, 10, 0, 1, Notoriety::Innocent, false};
-    tc.target(blue, Notoriety::Innocent, TargetOptions{});
-    CHECK(h.sent.empty());
-    REQUIRE(h.pendingQuery);
+    rig.serverTarget(0, 1, 1);
+    rig.targeting.target(0x00000077);
+    CHECK(rig.sent.empty());
+    REQUIRE(rig.pendingQuery);
 
-    h.pendingQuery();
-    CHECK(h.sent.size() == 1);
-    CHECK_FALSE(tc.isTargeting());
+    rig.pendingQuery();
+    CHECK(rig.sent.size() == 1);
+    CHECK_FALSE(rig.targeting.isTargeting());
 
     // A query already open: target straight away.
-    h.sent.clear();
-    h.answerQuery = false;
-    tc.setTargeting(CursorTarget::Object, 1, TargetType::Harmful);
-    tc.target(blue, Notoriety::Innocent, TargetOptions{});
-    CHECK(h.sent.size() == 1);
+    rig.sent.clear();
+    rig.answerQuery = false;
+    rig.serverTarget(0, 1, 1);
+    rig.targeting.target(0x00000077);
+    CHECK(rig.sent.size() == 1);
 }
 
-TEST_CASE("targeting: multi placement and callback cursors")
+TEST_CASE("targeting: multi placement and client-side cursors")
 {
-    Harness h;
-    TargetCursor tc = h.make();
+    Rig rig;
 
-    // The 26-byte form older clients get has no hue; the 30-byte form does.
-    std::vector<uint8_t> p(26, 0);
+    std::vector<uint8_t> p(30, 0);
     p[0] = 0x99;
-    p[5] = 0x2A;   // deed serial low byte
+    p[5] = 0x2A;
     p[19] = 0x64;  // model
-    REQUIRE(tc.handleMultiPlacement(p));
-    CHECK(tc.multi()->hue == 0);
+    rig.handlers.handle(rig.world, p, 1);
+    REQUIRE(rig.world.target.multi.has_value());
+    CHECK(rig.world.target.state == CursorTarget::MultiPlacement);
 
-    p.resize(30, 0);
-    p[26] = 0x04;
-    p[27] = 0x55;  // hue
-    REQUIRE(tc.handleMultiPlacement(p));
-    CHECK(tc.state() == CursorTarget::MultiPlacement);
-    REQUIRE(tc.multi().has_value());
-    CHECK(tc.multi()->model == 0x64);
-    CHECK(tc.multi()->hue == 0x0455);
+    rig.targeting.sendMultiTarget(1000, 1000, 0);
+    CHECK(rig.sent.size() == 1);
+    CHECK_FALSE(rig.world.target.multi.has_value());
+    CHECK(rig.multiCleared == 1);
 
-    tc.sendMultiTarget(1000, 1000, 0);
-    CHECK(h.sent.size() == 1);
-    CHECK_FALSE(tc.multi().has_value());
-    CHECK(h.multiCleared == 1);
-
-    std::optional<uint32_t> picked;
-    bool cancelled = false;
-    tc.setTargeting([&](const TargetCursor::Picked* p) {
-        if (p == nullptr)
+    // A callback cursor picks locally and sends nothing.
+    rig.sent.clear();
+    Item& item = rig.world.getOrCreateItem(0x40000001);
+    item.amount = 3;
+    std::optional<Serial> picked;
+    rig.targeting.setCallback([&](const Targeting::Picked* pk) {
+        if (pk != nullptr)
         {
-            cancelled = true;
+            picked = pk->serial;
         }
-        else
-        {
-            picked = p->serial;
-        }
-    }, 0, TargetType::Neutral);
-    tc.target(TargetEntity{0x40000001}, Notoriety::Innocent, TargetOptions{});
+    });
+    CHECK(rig.targeting.isTargeting());
+    rig.targeting.target(0x40000001);
     CHECK(picked == 0x40000001u);
+    CHECK(rig.sent.empty());
+    CHECK_FALSE(rig.targeting.isTargeting());
 
-    tc.setTargeting([&](const TargetCursor::Picked* p) { cancelled = p == nullptr; }, 0, TargetType::Neutral);
-    tc.cancel();
+    bool cancelled = false;
+    rig.targeting.setCallback([&](const Targeting::Picked* pk) { cancelled = pk == nullptr; });
+    rig.targeting.cancel();
     CHECK(cancelled);
+    CHECK(rig.sent.empty());
+
+    // A server cursor replaces a client-side one.
+    cancelled = false;
+    rig.targeting.setCallback([&](const Targeting::Picked* pk) { cancelled = pk == nullptr; });
+    rig.serverTarget(0, 4, 0);
+    CHECK(cancelled);
+    CHECK(rig.targeting.clientCursor() == Targeting::ClientCursor::None);
+    CHECK(rig.world.target.cursorId == 4);
 }

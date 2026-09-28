@@ -9,7 +9,7 @@ routes Axmol events into it.
 | Walkability and z, A* auto-walk | `uo/movement/Pathfinder`, `AutoWalker` | `Pathfinder` |
 | Step interpolation for every mobile | `uo/movement/MobileMotion` | `Mobile.ProcessSteps`, `MovementSpeed` |
 | Mouse and arrow walk intent | `uo/movement/MovementInput` | `GameSceneInputHandler`, `GameScene.Update` |
-| Target cursor, 0x6C/0x99 | `uo/game/TargetCursor` | `TargetManager` |
+| Target clicks and 0x6C answers over `World::target` | `uo/world/Targeting` | `TargetManager` |
 | Axmol pointer/keyboard listeners | `InputRouter` here | `GameSceneInputHandler`, `Input/Mouse` |
 
 ## Wiring in the game scene
@@ -40,7 +40,7 @@ and mobiles.
 
 Packets: 0x22 goes to `Walker::confirm` (send `net::out::resync()` when it says so), 0x21 to
 `Walker::deny` plus clearing the player's motion and snapping it, 0x97 to `walk()`, 0xBF/1 and
-0xBF/2 to `Walker::fastWalk()`, 0x6C and 0x99 to `TargetCursor`.
+0xBF/2 to `Walker::fastWalk()`; `MovementSystem::install` hooks all of these on `uo::world::PacketHandlers`. `Targeting::install` takes over 0x6C so a server cancel is echoed; 0x99 stays with the world handler.
 
 Escape cancels the target cursor, else a cancellable auto-walk. Right double-click on the world
 starts `AutoWalker::start` toward the clicked tile (distance 0; a blocked goal becomes 1).
