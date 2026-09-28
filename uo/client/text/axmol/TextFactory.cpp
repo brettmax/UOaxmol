@@ -171,6 +171,16 @@ void TextLabel::setStyle(const TextStyle& style)
     rebuild();
 }
 
+void TextLabel::setContent(std::string_view utf8, const TextStyle& style)
+{
+    if (_text == utf8 && _style == style)
+        return;
+
+    _text  = std::string(utf8);
+    _style = style;
+    rebuild();
+}
+
 void TextLabel::setHue(std::uint16_t hue)
 {
     if (_style.hue == hue)

@@ -33,6 +33,8 @@ struct TextStyle
     std::uint32_t htmlColor    = 0xFFFFFFFF;  // text color before any tag, see createHtml
     bool htmlBackgroundColored = false;       // let <body bgcolor> fill the background
 
+    bool operator==(const TextStyle&) const = default;
+
     std::uint16_t flags() const
     {
         return static_cast<std::uint16_t>(extraFlags | (border ? uo::text::FontStyleBlackBorder : 0) |
@@ -68,6 +70,8 @@ public:
     void setText(std::string_view utf8);
     void setStyle(const TextStyle& style);
     void setHue(std::uint16_t hue);
+    // Text and style together, rebuilt once and only when either changed.
+    void setContent(std::string_view utf8, const TextStyle& style);
 
     // Local point in UO orientation (origin top-left, y down). With saveHitMap only opaque
     // pixels hit, as PixelCheck does; otherwise the bounding box does.
