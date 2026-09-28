@@ -681,3 +681,30 @@ TEST_CASE("fonts: BMFont pages match the client's own glyph rendering")
     check("unifont0", u'!', true);
     check("unifont0", u'\u0101', true);
 }
+
+TEST_CASE("cliloc: one JSON table per language, enu underneath and Clilocs.txt on top")
+{
+    Client c;
+    c.dir.write("Cliloc.enu", uotest::textfixture::clilocEnu());
+    Bytes deu;
+    le32(deu, 2);
+    le16(deu, 1);
+    const std::string schwert = "ein Schwert";
+    le32(deu, 1000);
+    deu.push_back(0);
+    le16(deu, static_cast<std::uint16_t>(schwert.size()));
+    deu.insert(deu.end(), schwert.begin(), schwert.end());
+    c.dir.write("Cliloc.deu", deu);
+    const std::string txt = "1002\tshard text\n";
+    c.dir.write("Clilocs.txt", Bytes(txt.begin(), txt.end()));
+
+    REQUIRE(c.run({"cliloc"}) == 0);
+    std::string enu = slurp(c.out.path / "data" / "cliloc.enu.json");
+    CHECK(enu.find("\"1000\":\"a sword\"") != std::string::npos);
+    CHECK(enu.find("\"1002\":\"shard text\"") != std::string::npos);
+    CHECK(enu.find("\"500005\":\"the quick  brown\\tfox\"") != std::string::npos);
+    CHECK(enu.find("\"1000\"") < enu.find("\"3000000\""));  // sorted by number
+    std::string deuJson = slurp(c.out.path / "data" / "cliloc.deu.json");
+    CHECK(deuJson.find("\"1000\":\"ein Schwert\"") != std::string::npos);
+    CHECK(deuJson.find("\"3000000\":\"base value\"") != std::string::npos);  // from Cliloc.enu
+}

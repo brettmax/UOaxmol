@@ -149,6 +149,7 @@ const std::vector<Stage>& stages()
         {"maps", "map/statics -> chunked .uomap files and radar images", runMaps},
         {"multis", "multi.mul -> data/multis.json", runMultis},
         {"animdata", "animdata.mul -> data/animdata.json", runAnimData},
+        {"cliloc", "Cliloc.<lang> (+ Clilocs.txt) -> data/cliloc.<lang>.json", runCliloc},
         {"sounds", "sound.mul -> sounds/<id>.wav and sounds.json", runSounds},
         {"anims", "anim*.mul / AnimationFrame*.uop -> per-body animation sheets", runAnims},
         {"fonts", "fonts.mul, unifont*.mul -> BMFont .fnt + .png", runFonts},

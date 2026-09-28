@@ -72,6 +72,8 @@ build/uo/tools/uoconvert/uoconvert --list  # stages
                                animId, hue, lightIndex, height, name]
     multis.json                multi id -> [[graphic, x, y, z, flags], ...]
     animdata.json              graphic -> [[frame offsets], frameInterval, frameStart]
+    cliloc.<lang>.json         number -> text (UTF-8) per Cliloc.<lang>, with Cliloc.enu under
+                               other languages and the shard's Clilocs.txt on top, as the client loads them
   Music/                       mirrors the client's Music/ folder
     **/*.mp3, Config.txt       copied as is
     **/<name>.ogg              rendered from <name>.mid (44.1 kHz stereo Ogg Vorbis)
@@ -175,5 +177,4 @@ is copied untouched, since Axmol's AudioEngine plays it.
 
 | Data | Why |
 |---|---|
-| Cliloc | The client reads `Cliloc.*` through `uo::assets::Cliloc`; a JSON export needs an iteration accessor there. |
 | `MultiCollection.uop`, `mapdif*`/`stadif*` | Not decoded by `uocore` yet; T2A data uses `multi.mul` and verdata. |
