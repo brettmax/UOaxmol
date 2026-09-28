@@ -188,6 +188,14 @@ bool WorldScene::init()
 
         _textureSource = std::make_unique<SceneTextures>(gc.install(), _texmaps.get(), _animTextures.get());
         _hitTest       = std::make_unique<uo::render::ArtHitTest>(gc.install().art());
+
+        // animdata.mul is optional: without it animated art (water, fires) shows its first frame.
+        auto animData = std::make_unique<uo::assets::AnimData>();
+        if (animData->load(gc.install().path("animdata.mul")))
+        {
+            _animData        = std::move(animData);
+            _animatedStatics = std::make_unique<uo::render::AnimatedStatics>(*_source, *_animData);
+        }
         _renderer      = uo::render::WorldRenderer::create(*_source, *_textureSource);
     }
 
@@ -335,6 +343,10 @@ void WorldScene::update(float dt)
             _drawListDirty = true;
         }
     }
+
+    // Water, fires and other animated art step through their animdata frames.
+    if (_animatedStatics && _animatedStatics->update(static_cast<std::uint32_t>(gc.movement().now())))
+        _drawListDirty = true;
 
     // Steps completed this frame move mobiles to new tiles; then their frames advance. The draw
     // list holds frame pointers, so it is rebuilt whenever the animator reports a change.
@@ -680,6 +692,7 @@ void WorldScene::rebuildDrawList()
     view.maxTileX = ((p->x >> 3) + kViewBlocks) * 8 + 7;
     view.maxTileY = ((p->y >> 3) + kViewBlocks) * 8 + 7;
     view.playerZ  = p->z;
+    view.animatedStatics = _animatedStatics.get();
 
     // Under a roof or an upper floor, hide what is above the player (ClassicUO UpdateMaxDrawZ).
     const auto limits = _map->computeViewZ(p->x, p->y, p->z);

@@ -32,6 +32,8 @@ struct Frame;
 namespace uo::render
 {
 
+class AnimatedStatics;
+
 enum class ObjectKind : uint8_t
 {
     Land,
@@ -76,6 +78,10 @@ struct ViewParams
     // Screen offset subtracted from every object's isometric position
     // (ClassicUO's _offset: the camera's top-left in world pixels).
     int offsetX = 0, offsetY = 0;
+
+    // Animated item art (water, fires): adds the current frame offset to the graphic of
+    // statics and ground items. Null draws the first frame.
+    const AnimatedStatics* animatedStatics = nullptr;
 
     // Objects (not land) at or above this Z are skipped: roofs and upper floors
     // when the player is indoors. 127 draws everything.

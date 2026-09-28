@@ -4,6 +4,8 @@
 
 #include "uo/render/WorldMap.h"
 
+#include "uo/render/AnimatedStatics.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -607,6 +609,11 @@ void WorldMap::buildDrawList(const ViewParams& view, std::vector<DrawItem>& out,
                 DrawItem item;
                 item.graphic = obj.graphic;
                 item.object  = &obj;
+                if (view.animatedStatics && (obj.kind == ObjectKind::Static || obj.kind == ObjectKind::Item))
+                {
+                    // View.DrawStatic / ItemView: graphic + the art index's AnimOffset.
+                    item.graphic = view.animatedStatics->animated(obj.graphic);
+                }
                 isoScreenPosition(obj.x, obj.y, obj.z, view.offsetX, view.offsetY, item.screenX, item.screenY);
 
                 // The +0.5 ClassicUO's batcher adds to every sprite; shadows get +0.25.
