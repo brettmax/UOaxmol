@@ -61,6 +61,10 @@ public:
     // Raw bytes of entry `index`; empty when absent.
     std::span<const std::uint8_t> read(std::size_t index) const;
 
+    // Entry bytes with zlib compression undone. BWT-wrapped entries (7.0.100+) come back
+    // inflated but still BWT-encoded; `bwt` is set so the caller can finish decoding.
+    bool readDecompressed(const FileIndex& e, std::vector<std::uint8_t>& out, bool* bwt = nullptr) const;
+
     const MappedFile& data() const { return _data; }
 
 protected:

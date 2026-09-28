@@ -2,6 +2,7 @@
 #include "uo/io/UOFile.h"
 
 #include "uo/io/BinaryReader.h"
+#include "uo/io/Compression.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -21,6 +22,19 @@ std::span<const std::uint8_t> UOFile::read(std::size_t index) const
 {
     const FileIndex* e = entry(index);
     return e ? raw(*e) : std::span<const std::uint8_t>{};
+}
+
+bool UOFile::readDecompressed(const FileIndex& e, std::vector<std::uint8_t>& out, bool* bwt) const
+{
+    auto bytes = raw(e);
+    if (bwt)
+        *bwt = e.compression == CompressionType::ZlibBwt;
+    if (e.compression == CompressionType::None)
+    {
+        out.assign(bytes.begin(), bytes.end());
+        return true;
+    }
+    return inflate(bytes, out, e.decompressed > 0 ? static_cast<std::size_t>(e.decompressed) : 0);
 }
 
 bool MulFile::load()
@@ -182,9 +196,10 @@ bool UopFile::load()
             e.decompressed = decompressed;
             e.compression  = static_cast<CompressionType>(flag);
 
-            if (_hasExtra && flag != 3)
+            if (_hasExtra && flag == 0)
             {
-                // Gump entries carry width/height ahead of the pixels.
+                // Uncompressed gump entries carry width/height ahead of the pixels; compressed
+                // ones carry them inside the deflated stream (see Gumps::get).
                 BinaryReader extra(_data.slice(static_cast<std::size_t>(offset), 8));
                 e.width  = extra.readI32LE();
                 e.height = extra.readI32LE();

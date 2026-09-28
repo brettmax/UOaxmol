@@ -8,7 +8,7 @@
  ****************************************************************************/
 
 #include "AppDelegate.h"
-#include "MainScene.h"
+#include "scenes/LoginScene.h"
 
 #define USE_VR_RENDERER  0
 #define USE_AUDIO_ENGINE 1
@@ -102,7 +102,7 @@ bool AppDelegate::applicationDidFinishLaunching()
 #endif
 
     // turn on display FPS
-    director->setStatsDisplay(true);
+    director->setStatsDisplay(false);
 
     // set FPS. the default value is 1.0/60 if you don't call this
     director->setAnimationInterval(1.0f / 60);
@@ -112,7 +112,7 @@ bool AppDelegate::applicationDidFinishLaunching()
                                         ResolutionPolicy::SHOW_ALL);
 
     // create a scene. it's an autorelease object
-    auto scene = utils::createInstance<MainScene>();
+    auto scene = utils::createInstance<LoginScene>();
 
     // run
     director->runWithScene(scene);

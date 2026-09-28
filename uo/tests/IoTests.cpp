@@ -95,3 +95,24 @@ TEST_CASE("UOP archives resolve entries by hashed virtual name")
     CHECK(std::string(e.begin(), e.end()) == "uop!");
     CHECK(uop.read(6).empty());
 }
+
+#include "uo/io/Compression.h"
+
+TEST_CASE("zlib inflate round-trips and rejects garbage")
+{
+    Bytes plain;
+    for (int i = 0; i < 5000; ++i)
+        plain.push_back(static_cast<std::uint8_t>(i * 7));
+    Bytes packed = io::deflate(plain);
+    REQUIRE_FALSE(packed.empty());
+    CHECK(packed.size() < plain.size());
+
+    Bytes out;
+    CHECK(io::inflate(packed, out, plain.size()));
+    CHECK(out == plain);
+    CHECK(io::inflate(packed, out));  // unknown size grows the buffer
+    CHECK(out == plain);
+
+    Bytes junk{1, 2, 3, 4};
+    CHECK_FALSE(io::inflate(junk, out));
+}
