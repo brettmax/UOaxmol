@@ -99,8 +99,9 @@ public:
     void insert(std::string_view utf8);
     // Backspace: removes the last character, or on an empty line returns to the default mode.
     void backspace();
-    // Ctrl+Backspace: removes the last word, keeping the space before it.
-    void deleteWord();
+    // Ctrl+Backspace: removes the word before `caret` (UTF-16 index, -1 for the end), keeping
+    // the space before it. Returns the new caret.
+    int deleteWord(int caret = -1);
     // Ctrl+Q / Ctrl+W: step back and forward through what was sent this session.
     void historyBack();
     void historyForward();

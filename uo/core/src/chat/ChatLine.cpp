@@ -287,30 +287,51 @@ void ChatLine::backspace()
     changed();
 }
 
-void ChatLine::deleteWord()
+int ChatLine::deleteWord(int caret)
 {
     if (_text.empty())
     {
         setMode(ChatMode::Default);
-        return;
+        return 0;
     }
 
-    // The caret is at the end; the last character is skipped so repeated presses keep going.
-    const std::size_t index = _text.size() > 1 ? _text.rfind(' ', _text.size() - 2) : std::string::npos;
-    if (index != std::string::npos)
+    std::u16string wide = uo::text::utf8ToUtf16(_text);
+    const int size      = static_cast<int>(wide.size());
+    if (caret < 0 || caret > size)
     {
-        _text.resize(index + 1);
+        caret = size;
+    }
+
+    // The character before the caret is skipped, so pressing again after a space keeps
+    // going. (ClassicUO means to, but its LastIndexOf(' ', caret - 1) finds that space.)
+    int index = -1;
+    for (int i = caret - 2; i >= 0; --i)
+    {
+        if (wide[static_cast<std::size_t>(i)] == u' ')
+        {
+            index = i;
+            break;
+        }
+    }
+
+    int newCaret = 0;
+    if (index >= 0)
+    {
+        wide     = wide.substr(0, static_cast<std::size_t>(index + 1)) + wide.substr(static_cast<std::size_t>(caret));
+        newCaret = index + 1;
     }
     else
     {
-        _text.clear();
+        wide.clear();
     }
+    _text = uo::text::utf16ToUtf8(wide);
     changed();
 
     if (_text.empty())
     {
         setMode(ChatMode::Default);
     }
+    return newCaret;
 }
 
 void ChatLine::historyBack()

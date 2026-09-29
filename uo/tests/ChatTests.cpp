@@ -209,6 +209,11 @@ TEST_CASE("chat: long lines go out in parts, history steps back")
     CHECK(rig.chat.text() == "go to the ");
     rig.chat.deleteWord();
     CHECK(rig.chat.text() == "go to ");
+
+    // With the caret inside the line only the word before it goes.
+    rig.chat.setText("go to the bank");
+    CHECK(rig.chat.deleteWord(9) == 6);
+    CHECK(rig.chat.text() == "go to  bank");
 }
 
 TEST_CASE("chat: party lines and commands")

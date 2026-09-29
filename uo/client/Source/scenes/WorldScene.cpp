@@ -500,6 +500,9 @@ uo::world::Entity* WorldScene::entityAt(Vec2 screen) const
 
 void WorldScene::onClick(MouseButton button, Vec2 screen)
 {
+    // Clicks that reach the world (gumps take their own) move the keyboard back to the chat.
+    _chat->takeKeyboard();
+
     if (button != MouseButton::Left)
     {
         return;
