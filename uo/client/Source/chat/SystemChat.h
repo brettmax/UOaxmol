@@ -46,7 +46,7 @@ public:
 
     // Keys the scene's input router passes on: Ctrl+Q / Ctrl+W history. True when used.
     bool keyDown(ax::KeyboardEvent::KeyCode key, bool ctrl);
-    // Escape: leaves a prompt. False when there was nothing to leave.
+    // Escape: cancels a prompt, else clears the line and its mode. False when it was empty.
     bool escape();
 
     // Whether Ctrl is down, for Ctrl+Backspace (the IME's backspace carries no modifiers).

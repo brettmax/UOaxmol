@@ -578,13 +578,10 @@ void WorldScene::onEscape()
         return;
     }
 
-    // A server prompt in the chat line is cancelled next (SystemChatControl on Escape).
-    if (_chat->escape())
-        return;
-
-    // Nothing to cancel: leave the world for the login screen.
-    gc.session().stop();
-    _director->replaceScene(utils::createInstance<LoginScene>());
+    // Then the chat line: a prompt is cancelled, typed text cleared. With nothing to cancel
+    // Escape does nothing; ClassicUO logs out only from its menu.
+    if (_chat->focused())
+        _chat->escape();
 }
 
 void WorldScene::centerCamera()

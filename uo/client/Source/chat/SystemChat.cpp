@@ -224,8 +224,13 @@ bool SystemChat::keyDown(KeyboardEvent::KeyCode key, bool ctrl)
 
 bool SystemChat::escape()
 {
+    // A prompt is cancelled; otherwise a typed line or a picked mode is cleared.
     if (!_line->escape())
-        return false;
+    {
+        if (_line->empty() && _line->mode() == uo::chat::ChatMode::Default)
+            return false;
+        _line->setMode(uo::chat::ChatMode::Default);
+    }
     pushLine();
     return true;
 }
