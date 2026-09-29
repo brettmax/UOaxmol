@@ -34,5 +34,5 @@ Packets: 0x22 goes to `Walker::confirm` (send `net::out::resync()` when it says 
 `Walker::deny` plus clearing the player's motion and snapping it, 0x97 to `walk()`, 0xBF/1 and
 0xBF/2 to `Walker::fastWalk()`; `MovementSystem::install` hooks all of these on `uo::world::PacketHandlers`. `Targeting::install` takes over 0x6C so a server cancel is echoed; 0x99 stays with the world handler.
 
-Escape cancels the target cursor, else a cancellable auto-walk, else returns to the login screen. Right double-click on the world
+Escape cancels the target cursor, else a cancellable auto-walk, else a chat prompt or the typed chat line; with nothing to cancel it does nothing. Right double-click on the world
 starts `AutoWalker::start` toward the clicked tile (distance 0; a blocked goal becomes 1).

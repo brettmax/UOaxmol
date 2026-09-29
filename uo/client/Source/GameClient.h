@@ -9,6 +9,7 @@
 #include "render/TextureCache.h"
 
 #include "uo/assets/Installation.h"
+#include "uo/chat/SpeechKeywords.h"
 #include "uo/movement/MovementSystem.h"
 #include "uo/net/Session.h"
 #include "uo/world/PacketHandlers.h"
@@ -39,6 +40,8 @@ public:
 
     const uo::assets::Installation& install() const { return _install; }
     UOTextures& textures() { return *_textures; }
+    // speech.mul keywords for outgoing speech; empty when the file is missing.
+    const uo::chat::SpeechKeywords& speechKeywords() const { return _speechKeywords; }
     uo::net::Session& session() { return _session; }
     uo::world::World& world() { return *_world; }
     // Packet dispatch into world(). Other modules (gumps, movement) register hooks here.
@@ -116,6 +119,7 @@ public:
     std::optional<std::string> translate(std::uint32_t cliloc, std::string_view args, bool capitalize) override;
 
 private:
+    uo::chat::SpeechKeywords _speechKeywords;
     GameClient();
 
     Settings _settings;

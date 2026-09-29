@@ -2,11 +2,11 @@
 #include "WorldScene.h"
 
 #include "GameClient.h"
-#include "axmol/JournalView.h"
 #include "axmol/OverheadTextLayer.h"
 #include "axmol/TextFactory.h"
 #include "axmol/TextSystem.h"
 #include "InputRouter.h"
+#include "chat/SystemChat.h"
 #include "LoginScene.h"
 
 #include "anim/AnimationTextures.h"
@@ -263,29 +263,25 @@ bool WorldScene::init()
 
     if (uo::client::text::TextSystem::instance().ready())
     {
-        // Speech over heads, between the world and the journal. It covers the visible area,
+        // Speech over heads, between the world and the chat. It covers the visible area,
         // which is the game viewport until the client has a resizable one.
         _overhead = uo::client::text::OverheadTextLayer::create();
         _overhead->setViewport(Rect(0, 0, size.width, size.height));
         _overhead->setPosition(origin);
         _overhead->setAnchorProvider([this](std::uint32_t serial) { return overheadAnchor(serial); });
         addChild(_overhead, 5);
-
-        _journalView = uo::client::text::JournalView::create(Size(size.width * 0.6f, 160));
-        _journalView->setPosition(origin + Vec2(12, 12));
-        addChild(_journalView, 10);
-    }
-    else
-    {
-        _journal = Label::createWithTTF("", kFont, 16);
-        _journal->setAnchorPoint(Vec2(0, 0));
-        _journal->setPosition(origin + Vec2(12, 12));
-        _journal->setDimensions(size.width * 0.6f, 0);
-        _journal->enableOutline(Color32::black, 1);
-        addChild(_journal, 10);
     }
 
-    // Gumps sit above the game view and the journal.
+    // The chat line along the bottom, with the last system lines above it (SystemChatControl).
+    _chat = SystemChat::create(GameClient::instance().world(), size.width,
+                               [](std::span<const std::uint8_t> b) {
+                                   GameClient::instance().session().send({b.begin(), b.end()});
+                               });
+    _chat->setPosition(origin);
+    _chat->line().keywords = &GameClient::instance().speechKeywords();
+    addChild(_chat, 10);
+
+    // Gumps sit above the game view and the chat.
     if (auto* gumps = GameClient::instance().gumps())
         addChild(gumps->createManager(), 20);
 
@@ -302,7 +298,13 @@ bool WorldScene::init()
     callbacks.onClick       = [this](MouseButton b, Vec2 p) { onClick(b, p); };
     callbacks.onDoubleClick = [this](MouseButton b, Vec2 p) { onDoubleClick(b, p); };
     callbacks.onEscape      = [this] { onEscape(); };
+    callbacks.chatLineEmpty = [this] { return _chat->empty(); };
+    callbacks.onKey         = [this](KeyboardEvent::KeyCode key, std::uint32_t mods, bool down) {
+        if (down)
+            _chat->keyDown(key, (mods & KeyboardEvent::CONTROL) != 0);
+    };
     _input = std::make_unique<InputRouter>(std::move(callbacks), GameClient::instance().movement().options.input);
+    _chat->ctrlHeld = [this] { return _input->ctrl(); };
 
     scheduleUpdate();
     return true;
@@ -317,7 +319,7 @@ void WorldScene::onEnter()
     gc.entityUpdatedHandler = [this](const uo::world::Entity& e) { syncEntity(e); };
     gc.entityRemovedHandler = [this](uo::world::Serial s) { removeEntity(s); };
     gc.messageHandler       = [this](const uo::world::Message& m) {
-        appendJournal(m);
+        _chat->addMessage(m, messageText(m));
         showOverhead(m);
     };
     gc.disconnectedHandler  = [this] { _director->replaceScene(utils::createInstance<LoginScene>()); };
@@ -327,7 +329,6 @@ void WorldScene::onEnter()
 
     world.forEachMobile([this](uo::world::Mobile& m) { syncEntity(m); });
     world.forEachItem([this](uo::world::Item& i) { syncEntity(i); });
-    refreshJournal();
     streamBlocks();
     centerCamera();
     rebuildDrawList();
@@ -499,6 +500,9 @@ uo::world::Entity* WorldScene::entityAt(Vec2 screen) const
 
 void WorldScene::onClick(MouseButton button, Vec2 screen)
 {
+    // Clicks that reach the world (gumps take their own) move the keyboard back to the chat.
+    _chat->takeKeyboard();
+
     if (button != MouseButton::Left)
     {
         return;
@@ -574,9 +578,10 @@ void WorldScene::onEscape()
         return;
     }
 
-    // Nothing to cancel: leave the world for the login screen.
-    gc.session().stop();
-    _director->replaceScene(utils::createInstance<LoginScene>());
+    // Then the chat line: a prompt is cancelled, typed text cleared. With nothing to cancel
+    // Escape does nothing; ClassicUO logs out only from its menu.
+    if (_chat->focused())
+        _chat->escape();
 }
 
 void WorldScene::centerCamera()
@@ -865,54 +870,6 @@ std::string WorldScene::messageText(const uo::world::Message& j) const
     return text;
 }
 
-std::string WorldScene::journalText(const uo::world::Message& j) const
-{
-    std::string text = messageText(j);
-    if (!j.name.empty() && j.serial != 0xFFFFFFFF && j.name != "System")
-        return j.name + ": " + text;
-    return text;
-}
-
-void WorldScene::appendJournal(const uo::world::Message& m)
-{
-    if (!_journalView)
-    {
-        refreshJournal();
-        return;
-    }
-    uo::client::text::JournalLine line;
-    std::string text = journalText(m);
-    if (!m.name.empty() && m.serial != 0xFFFFFFFF && m.name != "System")
-    {
-        line.name = m.name;
-        text      = text.substr(m.name.size() + 2);
-    }
-    line.text    = std::move(text);
-    line.hue     = m.hue;
-    line.unicode = m.unicode;
-    _journalView->append(line);
-}
-
-void WorldScene::refreshJournal()
-{
-    const auto& journal = GameClient::instance().world().journal();
-    if (_journalView)
-    {
-        _journalView->clearEntries();
-        for (const auto& m : journal)
-            appendJournal(m);
-        return;
-    }
-    std::string out;
-    std::size_t start = journal.size() > 8 ? journal.size() - 8 : 0;
-    for (std::size_t i = start; i < journal.size(); ++i)
-    {
-        out += journalText(journal[i]);
-        out += '\n';
-    }
-    _journal->setString(out);
-}
-
 void WorldScene::showOverhead(const uo::world::Message& m)
 {
     using uo::world::MessageType;
@@ -921,7 +878,7 @@ void WorldScene::showOverhead(const uo::world::Message& m)
         return;
 
     // What ClassicUO puts over an object; guild, alliance, party, command and system text
-    // stays in the journal.
+    // stays in the chat lines.
     switch (m.type)
     {
     case MessageType::Regular:
