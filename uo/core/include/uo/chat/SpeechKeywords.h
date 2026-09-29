@@ -31,6 +31,9 @@ public:
     // list empty, which only means speech goes out unencoded.
     bool load(const std::string& path);
     void loadFromBytes(std::span<const std::uint8_t> bytes);
+    // The English keywords ModernUO's handlers test ("bank", "vendor buy", pet and tillerman
+    // orders), for installs without speech.mul. Replaces the list.
+    void loadBuiltin();
 
     void add(std::uint16_t id, std::string_view text);
     bool empty() const noexcept { return _entries.empty(); }

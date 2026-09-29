@@ -103,10 +103,14 @@ bool GameClient::loadAssets()
         _audio.shutdown();
         _audio.initialize(_install.sounds());
         _audio.setClientVersion(_settings.clientVersion);
-        // Optional: without it speech goes out without keyword ids ("bank", "vendor buy").
+        // Keyword ids ("bank", "vendor buy") come from speech.mul, or from the built-in English
+        // list on installs without it (the UO Renaissance discs ship none).
         _speechKeywords = {};
         if (!_speechKeywords.load(_install.path("speech.mul")))
-            AXLOGW("AxmolUO: speech.mul not found; speech keywords disabled");
+        {
+            _speechKeywords.loadBuiltin();
+            AXLOGI("AxmolUO: speech.mul not found; using the built-in speech keywords");
+        }
     }
     return _assetsLoaded;
 }
