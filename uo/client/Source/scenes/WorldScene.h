@@ -21,9 +21,10 @@
 
 namespace uo::client::text
 {
-class JournalView;
 class OverheadTextLayer;
 }
+
+class SystemChat;
 
 namespace uo::client::input
 {
@@ -52,7 +53,7 @@ class AnimationTextures;
 // The game view: terrain, statics and ground items drawn by uo::render::WorldRenderer
 // (stretched land, ClassicUO depth order, GPU hues) over 8x8 map blocks streamed around the
 // player, mobiles mirrored from uo::world::World, mouse and keyboard input (uo/client/input)
-// driving movement and the target cursor, and a journal. Mobiles are animated
+// driving movement and the target cursor, and the chat line with recent system lines. Mobiles are animated
 // (uo::anim::WorldMobileAnimator) and drawn in the same depth-sorted list. The Axmol version of
 // ClassicUO's GameScene.
 class WorldScene : public ax::Scene
@@ -95,11 +96,8 @@ private:
     void syncEntity(const uo::world::Entity& e);
     void removeEntity(std::uint32_t serial);
     void centerCamera();
-    void refreshJournal();
     // A message's text with cliloc fallback applied, without the speaker's name.
     std::string messageText(const uo::world::Message& m) const;
-    std::string journalText(const uo::world::Message& m) const;
-    void appendJournal(const uo::world::Message& m);
     // Speech and labels over the mobile or ground item that sent them (MessageManager).
     void showOverhead(const uo::world::Message& m);
     // Where an entity's overhead text stacks from, in UO screen pixels (top-left origin).
@@ -122,8 +120,7 @@ private:
     void onEscape();
 
     ax::Node* _worldNode = nullptr;
-    ax::Label* _journal  = nullptr;  // TTF fallback when UO fonts are missing
-    uo::client::text::JournalView* _journalView = nullptr;
+    SystemChat* _chat = nullptr;  // chat line and recent system lines, bottom left
     uo::client::text::OverheadTextLayer* _overhead = nullptr;  // null without UO fonts
     ax::Label* _coords   = nullptr;
     std::unique_ptr<uo::client::input::InputRouter> _input;

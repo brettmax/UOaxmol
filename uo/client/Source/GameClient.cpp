@@ -91,6 +91,10 @@ bool GameClient::loadAssets()
         _audio.shutdown();
         _audio.initialize(_install.sounds());
         _audio.setClientVersion(_settings.clientVersion);
+        // Optional: without it speech goes out without keyword ids ("bank", "vendor buy").
+        _speechKeywords = {};
+        if (!_speechKeywords.load(_install.path("speech.mul")))
+            AXLOGW("AxmolUO: speech.mul not found; speech keywords disabled");
     }
     return _assetsLoaded;
 }
