@@ -143,10 +143,16 @@ void LoginScene::onEnter()
     };
     gc.disconnectedHandler = [this] { setStatus("Disconnected.", true); };
 
-    if (gc.settings().autoLogin && !gc.autoLoginDone && !gc.settings().account.empty())
+    // Without a password (never saved, or savePassword off) autoLogin waits for it to be typed.
+    if (gc.settings().autoLogin && !gc.autoLoginDone && !gc.settings().account.empty() &&
+        !gc.settings().password.empty())
     {
         gc.autoLoginDone = true;  // once per launch, not after every disconnect
         scheduleOnce([this](float) { login(); }, 0.1f, "autologin");
+    }
+    else if (gc.settings().autoLogin && !gc.autoLoginDone && !gc.settings().account.empty())
+    {
+        setStatus("Enter your password to log in.");
     }
 }
 

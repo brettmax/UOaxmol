@@ -15,6 +15,57 @@ std::string userPath()
 {
     return FileUtils::getInstance()->getWritablePath() + "settings.json";
 }
+
+// Saved passwords are obfuscated the way ClassicUO's Crypter does it: a "1-" marker, then each
+// byte XORed with a rolling key and written as hex. This only keeps the password from being
+// readable at a glance in settings.json; it is not encryption. A value without the marker is
+// taken as typed by hand and used as is.
+constexpr std::string_view kObfuscatedPrefix = "1-";
+
+std::uint8_t obfuscationKey(std::size_t i)
+{
+    return static_cast<std::uint8_t>(0x5A ^ (i * 31 + 7));
+}
+
+std::string obfuscate(std::string_view plain)
+{
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    std::string out(kObfuscatedPrefix);
+    for (std::size_t i = 0; i < plain.size(); ++i)
+    {
+        const auto b = static_cast<std::uint8_t>(static_cast<std::uint8_t>(plain[i]) ^ obfuscationKey(i));
+        out.push_back(kHex[b >> 4]);
+        out.push_back(kHex[b & 0xF]);
+    }
+    return out;
+}
+
+std::string deobfuscate(std::string_view stored)
+{
+    if (!stored.starts_with(kObfuscatedPrefix))
+        return std::string(stored);
+
+    auto nibble = [](char c) -> int {
+        if (c >= '0' && c <= '9')
+            return c - '0';
+        if (c >= 'A' && c <= 'F')
+            return c - 'A' + 10;
+        if (c >= 'a' && c <= 'f')
+            return c - 'a' + 10;
+        return -1;
+    };
+
+    const std::string_view hex = stored.substr(kObfuscatedPrefix.size());
+    std::string out;
+    for (std::size_t i = 0; i + 1 < hex.size(); i += 2)
+    {
+        const int hi = nibble(hex[i]), lo = nibble(hex[i + 1]);
+        if (hi < 0 || lo < 0)
+            return {};
+        out.push_back(static_cast<char>((hi << 4 | lo) ^ obfuscationKey(i / 2)));
+    }
+    return out;
+}
 }  // namespace
 
 Settings Settings::load()
@@ -44,6 +95,9 @@ Settings Settings::load()
     str("host", s.host);
     str("account", s.account);
     str("password", s.password);
+    s.password = deobfuscate(s.password);
+    if (doc.HasMember("savePassword") && doc["savePassword"].IsBool())
+        s.savePassword = doc["savePassword"].GetBool();
 
     if (doc.HasMember("clientVersion") && doc["clientVersion"].IsString())
     {
@@ -72,7 +126,10 @@ void Settings::save() const
     doc.AddMember("host", rapidjson::Value(host.c_str(), a), a);
     doc.AddMember("port", port, a);
     doc.AddMember("account", rapidjson::Value(account.c_str(), a), a);
-    // The password is deliberately not written back to disk.
+    // Only kept when asked for, and then obfuscated; autoLogin needs it on later launches.
+    doc.AddMember("savePassword", savePassword, a);
+    if (savePassword && !password.empty())
+        doc.AddMember("password", rapidjson::Value(obfuscate(password).c_str(), a), a);
     doc.AddMember("ignoreRelayAddress", ignoreRelayAddress, a);
     doc.AddMember("map", map, a);
     doc.AddMember("autoLogin", autoLogin, a);
