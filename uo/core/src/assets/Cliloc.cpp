@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdio>
 #include <cstring>
 #include <optional>
 #include <vector>
@@ -121,18 +122,22 @@ bool Cliloc::load(const Installation& installation, std::string_view lang)
     }
     else
     {
-        // 1.x clients predate Cliloc.enu: their system messages are in cliloc-1.<lang>.
-        name = "cliloc-1." + std::string(lang);
+        // 1.x clients predate Cliloc.enu: see legacyTables().
+        for (const auto& [stem, base] : legacyTables())
+        {
+            name = stem + "." + std::string(lang);
 
-        if (!installation.exists(name))
-            name = "cliloc-1.enu";
+            if (!installation.exists(name))
+                name = stem + ".enu";
 
-        io::MappedFile file(installation.path(name));
+            io::MappedFile file(installation.path(name));
 
-        if (!file.isOpen() || !loadLegacyFromBytes(file.bytes(), 500000))
+            if (file.isOpen() && loadLegacyFromBytes(file.bytes(), base))
+                ok = true;
+        }
+
+        if (!ok)
             return false;
-
-        ok = true;
     }
 
     io::MappedFile ours(installation.path("Clilocs.txt"));
@@ -141,6 +146,24 @@ bool Cliloc::load(const Installation& installation, std::string_view lang)
         loadOverrides(std::string_view(reinterpret_cast<const char*>(ours.data()), ours.size()));
 
     return ok;
+}
+
+const std::vector<std::pair<std::string, std::int32_t>>& Cliloc::legacyTables()
+{
+    static const std::vector<std::pair<std::string, std::int32_t>> tables = [] {
+        std::vector<std::pair<std::string, std::int32_t>> t{{"cliloc-1", 500000}};
+
+        for (int n = 0; n < 100; ++n)
+        {
+            char stem[16];
+            std::snprintf(stem, sizeof(stem), "cliloc%02d", n);
+            t.emplace_back(stem, 1000000 + 1000 * n);
+        }
+
+        return t;
+    }();
+
+    return tables;
 }
 
 bool Cliloc::loadFromBytes(std::span<const uint8_t> data)

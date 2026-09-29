@@ -7,6 +7,8 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace uo::assets
 {
@@ -26,15 +28,20 @@ public:
     bool load(const std::string& path);
     // Cliloc.<lang> from the installation (Cliloc.enu when that language is missing), with
     // Cliloc.enu underneath when lang is not "enu", then Clilocs.txt on top. Installations
-    // older than Cliloc.enu fall back to cliloc-1.<lang> (or cliloc-1.enu).
+    // older than Cliloc.enu load the legacyTables() instead, each as <stem>.<lang> or
+    // <stem>.enu.
     bool load(const Installation& installation, std::string_view lang);
+    // The pre-Cliloc.enu tables of 1.x clients and the number each one's first string gets:
+    // cliloc-1 holds the 500000 system messages; cliloc00, cliloc01, ... hold the tutorial,
+    // help and skill texts from 1000000 + 1000 * n (cliloc01's third string is 1001002, the
+    // title of ModernUO's help gump).
+    static const std::vector<std::pair<std::string, std::int32_t>>& legacyTables();
     // One cliloc file image, plain or BWT-compressed, added on top of what is loaded.
     bool loadFromBytes(std::span<const std::uint8_t> bytes);
     // A pre-Cliloc.enu string table (cliloc-1.enu in 1.x clients): an IFF image
     // FORM DATA { FORM LANG { INFO, TEXT } } whose TEXT is NUL-separated strings, Latin-1 or
     // UTF-16LE as INFO says.
-    // String i becomes entry `base + i`; cliloc-1 holds 500000 and up, the numbers
-    // ModernUO still sends for those messages.
+    // String i becomes entry `base + i` (the bases are in legacyTables()).
     bool loadLegacyFromBytes(std::span<const std::uint8_t> bytes, std::int32_t base);
     // Clilocs.txt content: "<number><tab or spaces><text>" per line, '#' comments.
     // Returns the number of entries added.
