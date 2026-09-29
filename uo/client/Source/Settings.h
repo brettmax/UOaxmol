@@ -19,6 +19,9 @@ struct Settings
     std::uint16_t port              = 2593;
     std::string account;
     std::string password;
+    // Write the password back (obfuscated, ClassicUO-style) so autoLogin keeps working after
+    // the first launch. Off means it is typed each time.
+    bool savePassword = true;
     bool ignoreRelayAddress = true;
     int map                 = 0;
     // ClassicUO's AutoLogin: connect on start and play the first character.
