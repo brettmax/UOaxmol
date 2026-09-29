@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace uo::assets
@@ -119,6 +120,22 @@ public:
                                TextAlign align, uint16_t flags, int height = 0) const;
 
     static int layoutHeight(const TextLayout& layout);
+
+    // --- Caret (text entries) ---
+    // Where the caret sits before character `pos` of `str` laid out at `width` (0 = the
+    // text's own width), as (x, y) from the top-left of the text: GetCaretPosASCII and
+    // GetCaretPosUnicode of the original, quirks included.
+    std::pair<int, int> caretPosAscii(uint8_t font, std::u16string_view str, int pos, int width, TextAlign align,
+                                      uint16_t flags) const;
+    std::pair<int, int> caretPosUnicode(uint8_t font, std::u16string_view str, int pos, int width,
+                                        TextAlign align, uint16_t flags) const;
+    // The caret index (0..str.size()) a click at (x, y) lands on: the line whose top is the
+    // nearest at or above y, then the caret position on it nearest to x. Consistent with
+    // caretPos*, so clicking where a caret is drawn puts the caret there.
+    int caretIndexAscii(uint8_t font, std::u16string_view str, int x, int y, int width, TextAlign align,
+                        uint16_t flags) const;
+    int caretIndexUnicode(uint8_t font, std::u16string_view str, int x, int y, int width, TextAlign align,
+                          uint16_t flags) const;
 
     // --- HTML mode ---
     // `startColor` is the text color before any tag (0xAABBGGRR as the original's RGBA
