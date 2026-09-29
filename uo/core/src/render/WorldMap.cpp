@@ -294,7 +294,122 @@ WorldMap::Block& WorldMap::loadBlock(int blockX, int blockY)
         insert(block.cells[(s.y << 3) + s.x], std::move(st));
     }
 
+    for (const auto& [owner, m] : _multis)
+    {
+        insertMultiParts(block, owner, m);
+    }
+
     return block;
+}
+
+void WorldMap::insertMultiParts(Block& block, std::uint32_t owner, const MultiPlacement& m)
+{
+    for (const assets::MultiComponent& part : m.parts)
+    {
+        insertMultiPart(block, owner, m, part);
+    }
+}
+
+void WorldMap::insertMultiPart(Block& block, std::uint32_t owner, const MultiPlacement& m, const assets::MultiComponent& part)
+{
+    const int bx = block.blockX * kBlockSize;
+    const int by = block.blockY * kBlockSize;
+    const int x  = m.x + part.x;
+    const int y  = m.y + part.y;
+
+    if (x < bx || y < by || x >= bx + kBlockSize || y >= by + kBlockSize)
+    {
+        return;
+    }
+
+    // Multi.Create: seasonal graphic, CanBeDrawn and the circle-of-transparency rule of statics.
+    const uint16_t graphic = _seasons->staticGraphic(_season, part.graphic);
+    if (static_cast<int>(graphic) >= _tiles.itemCount())
+    {
+        return;
+    }
+    StaticTileData data = _tiles.item(graphic);
+
+    WorldObject obj;
+    obj.kind             = ObjectKind::Multi;
+    obj.graphic          = graphic;
+    obj.hue              = m.hue;
+    obj.x                = static_cast<uint16_t>(x);
+    obj.y                = static_cast<uint16_t>(y);
+    obj.z                = static_cast<int8_t>(std::clamp(m.z + part.z, -128, 127));
+    obj.owner            = owner;
+    obj.allowedToDraw    = canDrawStatic(graphic, data);
+    obj.canBeTransparent = computeCanBeTransparent(data);
+
+    insert(block.cells[((y - by) << 3) + (x - bx)], std::move(obj));
+}
+
+void WorldMap::setMulti(std::uint32_t owner, int x, int y, int z, uint16_t hue, std::span<const assets::MultiComponent> parts)
+{
+    if (owner == 0)
+    {
+        return;
+    }
+
+    removeMulti(owner);
+
+    MultiPlacement m;
+    m.x   = x;
+    m.y   = y;
+    m.z   = z;
+    m.hue = hue;
+    for (const assets::MultiComponent& part : parts)
+    {
+        if (part.visible)
+        {
+            m.parts.push_back(part);
+        }
+    }
+
+    for (const assets::MultiComponent& part : m.parts)
+    {
+        const int px = x + part.x;
+        const int py = y + part.y;
+        if (px < 0 || py < 0)
+        {
+            continue;
+        }
+        if (auto b = _blocks.find(key(px / kBlockSize, py / kBlockSize)); b != _blocks.end())
+        {
+            insertMultiPart(b->second, owner, m, part);
+        }
+    }
+
+    _multis.emplace(owner, std::move(m));
+}
+
+bool WorldMap::removeMulti(std::uint32_t owner)
+{
+    auto it = _multis.find(owner);
+
+    if (it == _multis.end())
+    {
+        return false;
+    }
+
+    const MultiPlacement& m = it->second;
+    for (const assets::MultiComponent& part : m.parts)
+    {
+        const int px = m.x + part.x;
+        const int py = m.y + part.y;
+        if (px < 0 || py < 0)
+        {
+            continue;
+        }
+        if (auto b = _blocks.find(key(px / kBlockSize, py / kBlockSize)); b != _blocks.end())
+        {
+            Cell& cell = b->second.cells[((py % kBlockSize) << 3) + (px % kBlockSize)];
+            std::erase_if(cell, [owner](const WorldObject& o) { return o.kind == ObjectKind::Multi && o.owner == owner; });
+        }
+    }
+
+    _multis.erase(it);
+    return true;
 }
 
 void WorldMap::unloadBlock(int blockX, int blockY)
@@ -345,7 +460,8 @@ void WorldMap::setSeason(SeasonId season, const SeasonTable* table)
         {
             for (const WorldObject& obj : cell)
             {
-                if (obj.kind != ObjectKind::Land && obj.kind != ObjectKind::Static)
+                // loadBlock puts multi components back with their seasonal graphic.
+                if (obj.kind != ObjectKind::Land && obj.kind != ObjectKind::Static && obj.kind != ObjectKind::Multi)
                 {
                     dynamic.push_back(obj);
                 }

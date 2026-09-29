@@ -23,6 +23,7 @@ namespace uo::assets
 {
 class MapFacet;
 class TileData;
+struct MultiComponent;
 }  // namespace uo::assets
 
 namespace uo::world
@@ -52,6 +53,10 @@ public:
     // Whether land texture `texId` exists in texmaps; stretched land needs one. Until the texmap
     // loader lands every non-zero id counts.
     std::function<bool(uint16_t texId)> hasTexmap;
+
+    // Components of multi `id` (a house or boat item's graphic) from the multi loader, or null
+    // when there is none. Without it multi items block nothing.
+    std::function<const std::vector<assets::MultiComponent>*(uint16_t id)> multiComponents;
 
 private:
     int8_t landZ(int x, int y) const;

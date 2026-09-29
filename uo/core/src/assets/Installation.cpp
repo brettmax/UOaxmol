@@ -110,6 +110,16 @@ bool Installation::load(const Options& options)
     }
     _gumps = std::make_unique<Gumps>(std::move(gumps), &_hues);
 
+    // Multis are survivable too: without them houses and boats are not drawn. Records grew from
+    // 12 to 16 bytes with the 64-bit tile flags, so the tiledata layout decides which this is.
+    _multis.reset();
+    if (exists("multi.mul") && exists("multi.idx"))
+    {
+        auto multi = std::make_unique<io::MulFile>(path("multi.mul"), path("multi.idx"));
+        if (multi->load())
+            _multis = std::make_unique<MultiLoader>(std::move(multi), _tileData.format() == TileData::Format::New);
+    }
+
     // A missing cliloc is survivable: pre-AOS shards send plain text.
     _cliloc.load(*this, options.language);
 

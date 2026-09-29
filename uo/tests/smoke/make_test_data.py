@@ -113,6 +113,14 @@ for b, items in statics.items():
     sdata += data
 w("staidx0.mul", bytes(staidx))
 w("statics0.mul", bytes(sdata))
+
+# multi.mul/multi.idx: multi 1 is a ring of crates (art 0x11) around its origin, 12-byte T2A
+# records { graphic, x, y, z, flags }. The first record is invisible (flags 0), as in real data.
+mparts = [(0x0001, 0, 0, 0, 0)]
+mparts += [(0x11, dx, dy, 0, 1) for dx in range(-2, 3) for dy in range(-2, 3) if max(abs(dx), abs(dy)) == 2]
+mdata = b"".join(struct.pack("<HhhhI", *p) for p in mparts)
+w("multi.mul", mdata)
+w("multi.idx", b"\xff\xff\xff\xff\0\0\0\0\0\0\0\0" + struct.pack("<IiI", 0, len(mdata), 0))
 # anim.mul/anim.idx: one 20x40 figure (head, red torso, blue legs) in two frames, used for every
 # action and direction of the human body 0x190, so the player and NPC are drawn and animate.
 # MUL block: 256-colour palette, frame count, offsets (from after the palette), then frames of

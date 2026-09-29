@@ -37,6 +37,18 @@ void GameClient::resetWorld()
     auto send = [this](std::span<const std::uint8_t> bytes) { _session.send({bytes.begin(), bytes.end()}); };
 
     _tiles    = std::make_unique<uo::movement::WorldTileSource>(*_world, _install.tileData());
+    // Houses and boats block movement and lay out custom house planes from multi.mul.
+    _tiles->multiComponents = [this](std::uint16_t id) -> const std::vector<uo::assets::MultiComponent>* {
+        const auto* multis = _install.multis();
+        return multis ? &multis->components(id) : nullptr;
+    };
+    _world->multiBounds = [this](std::uint16_t id) -> std::optional<uo::world::MultiBounds> {
+        const auto* multis = _install.multis();
+        if (!multis || multis->components(id).empty())
+            return std::nullopt;
+        const auto e = multis->extent(id);
+        return uo::world::MultiBounds{e.minX, e.minY, e.maxX, e.maxY};
+    };
     _tilesMap = -1;
     _movement = std::make_unique<uo::movement::MovementSystem>(*_world, *_tiles, send);
     _movement->install(_handlers);

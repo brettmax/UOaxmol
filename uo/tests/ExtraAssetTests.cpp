@@ -7,6 +7,7 @@
 #include "uo/assets/Lights.h"
 #include "uo/assets/Multis.h"
 #include "uo/assets/Texmaps.h"
+#include "uo/io/UOFile.h"
 #include "uo/io/Verdata.h"
 
 #include "doctest.h"
@@ -58,6 +59,48 @@ TEST_CASE("multis: 12-byte records before 7.0.9, 16 after")
 
     le32(b, 0);  // 16 bytes: one new-format record
     CHECK(Multis::decode(b, true).size() == 1);
+}
+
+TEST_CASE("multi loader: reads multi.mul entries by id, cached, with their footprint")
+{
+    TempDir dir;
+    Bytes data;
+    auto part = [&](std::uint16_t g, std::int16_t x, std::int16_t y, std::int16_t z, std::uint32_t flags) {
+        le16(data, g);
+        le16(data, static_cast<std::uint16_t>(x));
+        le16(data, static_cast<std::uint16_t>(y));
+        le16(data, static_cast<std::uint16_t>(z));
+        le32(data, flags);
+    };
+    // Entry 1: a boat-like multi whose first part is invisible (the item's own graphic).
+    part(0x3E4E, 0, 0, 0, 0);
+    part(0x3E65, -1, 2, 0, 1);
+    part(0x3E66, 3, -4, 5, 1);
+
+    Bytes idx;
+    le32(idx, 0xFFFFFFFF), le32(idx, 0), le32(idx, 0);  // entry 0: absent
+    le32(idx, 0), le32(idx, static_cast<std::uint32_t>(data.size())), le32(idx, 0);
+
+    auto file = std::make_unique<uo::io::MulFile>(dir.write("multi.mul", data), dir.write("multi.idx", idx));
+    REQUIRE(file->load());
+    MultiLoader multis(std::move(file), false);
+
+    CHECK(multis.count() == 2);
+    CHECK(multis.components(0).empty());
+    CHECK(multis.components(7).empty());
+
+    const auto& parts = multis.components(1);
+    REQUIRE(parts.size() == 3);
+    CHECK_FALSE(parts[0].visible);
+    CHECK(parts[1].visible);
+    CHECK(parts[2].z == 5);
+    CHECK(&multis.components(1) == &parts);
+
+    const MultiExtent e = multis.extent(1);
+    CHECK(e.minX == -1);
+    CHECK(e.minY == -4);
+    CHECK(e.maxX == 3);
+    CHECK(e.maxY == 2);
 }
 
 TEST_CASE("animdata: entry g is at g * 68 + 4 * (g / 8 + 1)")

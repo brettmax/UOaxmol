@@ -113,6 +113,12 @@ bool hitTest(const DrawItem& item, const ITileData& tiles, IArtHitTest& art, int
 
     case DrawType::Static:
     {
+        // MultiView.CheckMouseSelection: a house placement preview is never picked.
+        if (item.object->kind == ObjectKind::Multi && (item.object->multiState & MULTI_PREVIEW) != 0)
+        {
+            return false;
+        }
+
         // Alpha above 1 marks pixels the circle of transparency discards.
         if (item.hue.alpha > 1.0f && circle.radius > 0)
         {

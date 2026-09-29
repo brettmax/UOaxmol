@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #include "uo/assets/Map.h"
+#include "uo/assets/Multis.h"
 #include "uo/assets/TileData.h"
 #include "uo/movement/MovementSystem.h"
 #include "uo/world/PacketHandlers.h"
@@ -137,6 +138,36 @@ TEST_CASE("movement system: tile source reads land, statics and world objects")
     out.clear();
     REQUIRE(rig.tiles.gatherTile(5, 6, out));
     CHECK(out.size() == 1);
+}
+
+TEST_CASE("movement system: multi components stand on their own tiles")
+{
+    Rig rig;
+    const std::vector<assets::MultiComponent> parts{
+        {0x0001, 0, 0, 0, 0, false},  // invisible
+        {0x0001, 1, -1, 0, 1, true},  // the wall graphic, one tile east and north
+    };
+    rig.tiles.multiComponents = [&](uint16_t id) { return id == 0x0010 ? &parts : nullptr; };
+
+    world::Item& house = rig.world.getOrCreateItem(0x40000020);
+    house.isMulti = true;
+    house.graphic = 0x0010;
+    house.x = 9;
+    house.y = 9;
+    house.z = 3;
+    rig.tiles.rebuild();
+
+    std::vector<TileObject> out;
+    REQUIRE(rig.tiles.gatherTile(9, 9, out));
+    CHECK(out.size() == 1);
+
+    out.clear();
+    REQUIRE(rig.tiles.gatherTile(10, 8, out));
+    REQUIRE(out.size() == 2);
+    CHECK(out[1].kind == TileObjectKind::Multi);
+    CHECK(out[1].z == 3);
+    CHECK(out[1].height == 20);
+    CHECK(out[1].has(tile_flag::Impassable));
 }
 
 TEST_CASE("movement system: steps, confirms and fast-walk keys through the packet handlers")

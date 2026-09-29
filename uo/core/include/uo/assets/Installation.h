@@ -7,6 +7,7 @@
 #include "uo/assets/Gumps.h"
 #include "uo/assets/Hues.h"
 #include "uo/assets/Map.h"
+#include "uo/assets/Multis.h"
 #include "uo/assets/TileData.h"
 #include "uo/io/ClientVersion.h"
 #include "uo/sound/SoundLoader.h"
@@ -57,6 +58,10 @@ public:
     bool soundsLoaded() const { return _soundsLoaded; }
     const MapFacet* map(int index) const;
 
+    // Houses and boats from multi.mul/multi.idx. Optional: nullptr when the install has no multi
+    // files (MultiCollection.uop is not read), and multi items then draw nothing.
+    const MultiLoader* multis() const { return _multis.get(); }
+
 private:
     std::unique_ptr<io::UOFile> openIndexed(const std::string& uopName, const std::string& uopPattern,
                                             const std::string& mul, const std::string& idx, bool hasExtra);
@@ -73,6 +78,7 @@ private:
     sound::SoundLoader _sounds;
     bool _soundsLoaded = false;
     std::vector<std::unique_ptr<MapFacet>> _maps;
+    std::unique_ptr<MultiLoader> _multis;
 };
 
 }  // namespace uo::assets
