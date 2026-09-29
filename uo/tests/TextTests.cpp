@@ -729,6 +729,15 @@ TEST_CASE("cliloc loads the legacy IFF cliloc-1 table")
     CHECK(jpn.size() == 2);
     CHECK(jpn.getString(500000) == "I!");
     CHECK(jpn.getString(500001) == "\xE5\x91\xAA\xE6\x96\x87");
+
+    // cliloc-1 is 500000 up; cliloc<NN> is 1000000 + 1000 * NN up (cliloc01[2] is 1001002).
+    using Table = std::pair<std::string, std::int32_t>;
+    const auto& tables = assets::Cliloc::legacyTables();
+    REQUIRE(tables.size() == 101);
+    CHECK(tables.front() == Table{"cliloc-1", 500000});
+    CHECK(tables[1] == Table{"cliloc00", 1000000});
+    CHECK(tables[2] == Table{"cliloc01", 1001000});
+    CHECK(tables.back() == Table{"cliloc99", 1099000});
 }
 
 TEST_CASE("utf conversion and word capitalization")

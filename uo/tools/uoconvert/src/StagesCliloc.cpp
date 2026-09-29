@@ -22,7 +22,8 @@ bool runCliloc(Context& ctx, JsonWriter& m)
         if (lower.find('/') == std::string::npos && lower.rfind("cliloc.", 0) == 0 && lower.size() > 7)
             langs.emplace_back(lower.substr(7), (fs::path(ctx.data.root()) / rel).string());
     }
-    // 1.x clients predate Cliloc.enu; their system messages (500000 up) are in cliloc-1.<lang>.
+    // 1.x clients predate Cliloc.enu: cliloc-1.<lang> names the languages, and every table in
+    // Cliloc::legacyTables() is layered in (500000 system messages, 1000000+ help texts).
     bool legacy = false;
     if (langs.empty())
     {
@@ -57,7 +58,22 @@ bool runCliloc(Context& ctx, JsonWriter& m)
         uo::assets::Cliloc cliloc;
         if (lang != "enu" && !enu.empty())
             cliloc.load(enu);
-        const bool loaded = legacy ? cliloc.loadLegacyFromBytes(Context::readFile(path), 500000) : cliloc.load(path);
+        bool loaded = false;
+        if (legacy)
+        {
+            for (const auto& [stem, base] : uo::assets::Cliloc::legacyTables())
+            {
+                std::string file = ctx.data.find(stem + "." + lang);
+                if (file.empty())
+                    file = ctx.data.find(stem + ".enu");
+                if (!file.empty() && cliloc.loadLegacyFromBytes(Context::readFile(file), base))
+                    loaded = true;
+            }
+        }
+        else
+        {
+            loaded = cliloc.load(path);
+        }
         if (!loaded)
         {
             ctx.warn("cliloc: could not decode " + path);

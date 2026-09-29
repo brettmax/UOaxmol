@@ -711,6 +711,47 @@ TEST_CASE("cliloc: one JSON table per language, enu underneath and Clilocs.txt o
     CHECK(deuJson.find("\"3000000\":\"base value\"") != std::string::npos);  // from Cliloc.enu
 }
 
+TEST_CASE("cliloc: 1.x IFF tables, cliloc-1 from 500000 and cliloc<NN> from 1000000 + 1000 * NN")
+{
+    // FORM DATA { FORM LANG { INFO, TEXT } } with NUL-separated Latin-1 strings.
+    auto iff = [](const char* lang, const std::vector<std::string>& strings) {
+        auto chunk = [](const char* tag, const Bytes& payload) {
+            Bytes b(tag, tag + 4);
+            uotest::be32(b, static_cast<std::uint32_t>(payload.size()));
+            b.insert(b.end(), payload.begin(), payload.end());
+            if (payload.size() & 1)
+                b.push_back(0);
+            return b;
+        };
+        Bytes info(lang, lang + 3);
+        info.push_back(0);
+        le32(info, 1);  // Latin-1
+        Bytes text;
+        for (const std::string& s : strings)
+        {
+            text.insert(text.end(), s.begin(), s.end());
+            text.push_back(0);
+        }
+        Bytes form = {'L', 'A', 'N', 'G'};
+        for (const Bytes& c : {chunk("INFO", info), chunk("TEXT", text)})
+            form.insert(form.end(), c.begin(), c.end());
+        Bytes data = {'D', 'A', 'T', 'A'};
+        const Bytes inner = chunk("FORM", form);
+        data.insert(data.end(), inner.begin(), inner.end());
+        return chunk("FORM", data);
+    };
+
+    Client c;
+    c.dir.write("cliloc-1.enu", iff("enu", {"Reputation aversion triggered", "second"}));
+    c.dir.write("cliloc01.enu", iff("enu", {"first", "second", "Ultima Online Help Menu"}));
+
+    REQUIRE(c.run({"cliloc"}) == 0);
+    std::string enu = slurp(c.out.path / "data" / "cliloc.enu.json");
+    CHECK(enu.find("\"500000\":\"Reputation aversion triggered\"") != std::string::npos);
+    CHECK(enu.find("\"500001\":\"second\"") != std::string::npos);
+    CHECK(enu.find("\"1001002\":\"Ultima Online Help Menu\"") != std::string::npos);
+}
+
 TEST_CASE("music: MIDI renders to Ogg Vorbis with the client's own soundfont, no external tools")
 {
     Client c;
