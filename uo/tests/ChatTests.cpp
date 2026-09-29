@@ -336,3 +336,32 @@ TEST_CASE("chat: recent lines show speaker-less messages for 10 seconds")
     }
     CHECK(lines.lines().size() == RecentLines::kMaxLines);
 }
+
+TEST_CASE("chat: built-in speech keywords stand in for a missing speech.mul")
+{
+    SpeechKeywords k;
+    k.loadBuiltin();
+    REQUIRE_FALSE(k.empty());
+
+    const auto v = uo::makeVersion(7, 0, 15, 1);
+    using Ids    = std::vector<std::uint16_t>;
+    CHECK(k.match("bank", v) == Ids{0x02});
+    CHECK(k.match("Bank!", v) == Ids{0x02});
+    CHECK(k.match("withdraw 500", v) == Ids{0x00});
+    CHECK(k.match("balance", v) == Ids{0x01});
+    CHECK(k.match("check 5000", v) == Ids{0x03});
+    CHECK(k.match("guards", v) == Ids{0x07});
+    CHECK(k.match("vendor buy", v) == Ids{0x3C, 0x171});
+    CHECK(k.match("vendor sell", v) == Ids{0x14D, 0x177});
+    CHECK(k.match("train", v) == Ids{0x6C});
+    CHECK(k.match("rex come", v) == Ids{0x155});
+    CHECK(k.match("all follow me", v) == Ids{0x163, 0x16C});
+    CHECK(k.match("i wish to lock this down", v) == Ids{0x23});
+    CHECK(k.match("set name The Dawn", v) == Ids{0x42});
+    CHECK(k.match("raise anchor", v) == Ids{0x6B});
+    CHECK(k.match("bankers", v).empty());
+    CHECK(k.match("hello there", v).empty());
+
+    // Encoded like the mul's ids: "bank" goes out as 0xAD with keyword 0x0002.
+    CHECK(SpeechKeywords::encode(k.match("bank", v)) == Bytes{0x00, 0x10, 0x02});
+}
