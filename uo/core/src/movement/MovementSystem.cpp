@@ -5,6 +5,7 @@
 #include "uo/movement/MovementSystem.h"
 
 #include "uo/assets/Map.h"
+#include "uo/assets/Multis.h"
 #include "uo/assets/TileData.h"
 #include "uo/io/BinaryReader.h"
 #include "uo/movement/MovementPackets.h"
@@ -146,9 +147,36 @@ void WorldTileSource::rebuild()
     const world::Player* player = _world.player();
 
     _world.forEachItem([&](world::Item& item) {
-        // Multi components come from the multi loader, which is not ported yet.
-        if (!item.onGround() || item.isMulti)
+        if (!item.onGround())
         {
+            return;
+        }
+
+        if (item.isMulti)
+        {
+            // Item.LoadMulti: each visible component stands on its own tile as a Multi object.
+            const auto* parts = multiComponents ? multiComponents(item.graphic) : nullptr;
+            if (!parts)
+            {
+                return;
+            }
+            for (const assets::MultiComponent& part : *parts)
+            {
+                const int x = item.x + part.x;
+                const int y = item.y + part.y;
+                if (!part.visible || x < 0 || y < 0)
+                {
+                    continue;
+                }
+                const assets::StaticTile* data = _tiledata.staticTile(part.graphic);
+                TileObject o;
+                o.kind = TileObjectKind::Multi;
+                o.graphic = part.graphic;
+                o.z = static_cast<int8_t>(std::clamp(item.z + part.z, -128, 127));
+                o.tileFlags = data ? data->flags : 0;
+                o.height = data ? data->height : 0;
+                _dynamic[tileKey(x, y)].push_back(o);
+            }
             return;
         }
 

@@ -717,8 +717,24 @@ void WorldScene::addItem(const uo::world::Entity& e)
     obj.y       = e.y;
     obj.z       = e.z;
     obj.serial  = e.serial;
-    if (const auto* data = GameClient::instance().install().tileData().staticTile(e.graphic))
+
+    const auto& install = GameClient::instance().install();
+    const auto* item    = e.isItem() ? static_cast<const uo::world::Item*>(&e) : nullptr;
+    if (item && item->isMulti)
+    {
+        // Item.LoadMulti: the visible components go on the map as multi parts; an invisible
+        // first component is what the item itself draws (MultiGraphic), and nothing when it is 0-2.
+        static const std::vector<uo::assets::MultiComponent> kNone;
+        const auto* multis = install.multis();
+        const auto& parts  = multis ? multis->components(e.graphic) : kNone;
+        _map->setMulti(e.serial, e.x, e.y, e.z, e.hue, parts);
+        obj.graphic       = !parts.empty() && !parts.front().visible ? parts.front().graphic : 0;
+        obj.allowedToDraw = obj.graphic > 2;
+    }
+    else if (const auto* data = install.tileData().staticTile(e.graphic))
+    {
         obj.allowedToDraw = uo::render::canDrawStatic(e.graphic, {data->flags, data->height, data->name});
+    }
 
     if (_map->addObject(obj))
         _items[e.serial] = {e.x, e.y};
@@ -833,6 +849,8 @@ void WorldScene::syncEntity(const uo::world::Entity& e)
 
 void WorldScene::removeEntity(std::uint32_t serial)
 {
+    if (_map && _map->removeMulti(serial))
+        _drawListDirty = true;
     if (auto it = _items.find(serial); it != _items.end())
     {
         if (_map)

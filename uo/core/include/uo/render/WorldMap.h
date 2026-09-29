@@ -16,8 +16,11 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <unordered_map>
 #include <vector>
+
+#include "uo/assets/Multis.h"
 
 #include "uo/render/HueVector.h"
 #include "uo/render/LandStretch.h"
@@ -66,7 +69,8 @@ struct WorldObject
     bool allowedToDraw = true;
     bool canBeTransparent = false;  // eligible for the circle of transparency
     int16_t priorityZ = 0;
-    uint32_t serial   = 0;          // 0 for land and statics
+    uint32_t serial   = 0;          // 0 for land, statics and multi components
+    uint32_t owner    = 0;          // multi components: serial of the house or boat item
     LandStretch land;               // only meaningful for ObjectKind::Land
 };
 
@@ -220,6 +224,15 @@ public:
     // it is not there (or the block is not loaded).
     bool removeObject(std::uint32_t serial, int x, int y);
 
+    // Places the visible components of a house or boat (Item.LoadMulti) at the origin tile
+    // (x, y, z), replacing any earlier placement of `owner`. Components are ObjectKind::Multi
+    // with serial 0 and `owner` set; the map keeps them and re-adds them to blocks that load
+    // later, so a multi that spans unloaded blocks fills in as they come into view.
+    void setMulti(std::uint32_t owner, int x, int y, int z, uint16_t hue, std::span<const assets::MultiComponent> parts);
+
+    // Takes the components of `owner` off the map. Returns false when it has none.
+    bool removeMulti(std::uint32_t owner);
+
     // Builds the back-to-front draw list for the view. `out` is cleared. Mobiles are drawn
     // only through a mobile source; without one they are skipped.
     void buildDrawList(const ViewParams& view, std::vector<DrawItem>& out, IMobileDrawSource* mobiles = nullptr) const;
@@ -249,9 +262,21 @@ private:
 
     void insert(Cell& cell, WorldObject obj);
 
+    struct MultiPlacement
+    {
+        int x = 0, y = 0, z = 0;
+        uint16_t hue = 0;
+        std::vector<assets::MultiComponent> parts;  // visible components only
+    };
+
+    // Inserts the components of `m` that fall in `block`.
+    void insertMultiParts(Block& block, std::uint32_t owner, const MultiPlacement& m);
+    void insertMultiPart(Block& block, std::uint32_t owner, const MultiPlacement& m, const assets::MultiComponent& part);
+
     const IMapSource& _map;
     const ITileData& _tiles;
     std::unordered_map<uint64_t, Block> _blocks;
+    std::unordered_map<std::uint32_t, MultiPlacement> _multis;
     SeasonId _season            = SeasonId::Summer;
     const SeasonTable* _seasons = &SeasonTable::defaults();
 };

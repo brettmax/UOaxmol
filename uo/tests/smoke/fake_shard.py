@@ -98,6 +98,8 @@ def game_server(conn):
         bytes([0x1B]) + struct.pack(">IIHHHhB", PLAYER, 0, 0x0190, X, Y, 0, 4) + b"\0" * 19,
         var(0x78, struct.pack(">IHHHbBHBB", 0x200, 0x0190, X + 2, Y - 1, 0, 2, 0, 0, 6) + struct.pack(">I", 0)),
         var(0x1A, struct.pack(">IHHH", 0x40000001, 0x0011, X - 2, Y + 2) + bytes([0])),
+        # A house (multi 1): its crate ring comes from multi.mul, not from the packet.
+        var(0x1A, struct.pack(">IHHH", 0x40000002, 0x4001, X + 4, Y - 4) + bytes([0])),
         var(0xAE, struct.pack(">IHBHH", 0xFFFFFFFF, 0xFFFF, 0, 0x3B2, 3) + b"ENU\0" + b"System".ljust(30, b"\0")
             + "Welcome to AxmolUO.".encode("utf-16-be") + b"\0\0"),
         bytes([0x55]),

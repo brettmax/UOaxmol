@@ -7,7 +7,9 @@
 //
 // - Flat land: the point must fall inside the 44x44 diamond.
 // - Stretched land: the point must fall inside the stretched quad.
-// - Statics and items: the art pixel under the point must be opaque.
+// - Statics, items and multi components: the art pixel under the point must be
+//   opaque. Multi components carry serial 0 (their house is `owner`), so a click
+//   on a wall acts on the tile like a static; placement previews are skipped.
 // - Shadows and fully transparent objects are never picked.
 // - An object the circle of transparency cuts through is not picked at
 //   points inside the circle (the shader discards those pixels).

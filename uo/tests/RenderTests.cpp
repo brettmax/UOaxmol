@@ -863,3 +863,115 @@ TEST_CASE("animated item art cycles animdata offsets like AnimatedStaticsManager
     }
     CHECK(frames == 1);
 }
+
+TEST_CASE("multis place their visible components and follow blocks, seasons and removal")
+{
+    FakeMap map(32, 32);
+    FakeTiles tiles;
+    tiles.items[0x0064] = StaticTileData{assets::TF_Wall | assets::TF_Impassable, 20};
+    tiles.items[0x0065] = StaticTileData{assets::TF_Roof, 0};
+    WorldMap wm(map, tiles);
+    wm.loadBlock(0, 0);
+
+    std::vector<assets::MultiComponent> parts(4);
+    parts[0] = {0x0001, 0, 0, 0, 0, false};  // invisible: never placed
+    parts[1] = {0x0064, 1, 1, 0, 1, true};
+    parts[2] = {0x0065, 1, 1, 20, 1, true};
+    parts[3] = {0x0064, 6, 0, 0, 1, true};   // (10, 4): in block (1, 0), not loaded yet
+
+    auto multisAt = [&](int x, int y) {
+        std::vector<const WorldObject*> out;
+        if (const auto* cell = wm.cellAt(x, y))
+        {
+            for (const WorldObject& o : *cell)
+            {
+                if (o.kind == ObjectKind::Multi)
+                {
+                    out.push_back(&o);
+                }
+            }
+        }
+        return out;
+    };
+
+    wm.setMulti(0x40000010, 4, 4, 5, 0x21, parts);
+
+    SUBCASE("visible parts sit at origin + offset with serial 0 and their owner")
+    {
+        CHECK(multisAt(4, 4).empty());
+        const auto at = multisAt(5, 5);
+        REQUIRE(at.size() == 2);
+        CHECK(at[0]->graphic == 0x0064);
+        CHECK(at[0]->z == 5);
+        CHECK(at[1]->z == 25);
+        CHECK(at[0]->serial == 0u);
+        CHECK(at[0]->owner == 0x40000010u);
+        CHECK(at[0]->hue == 0x21);
+        CHECK(at[0]->canBeTransparent);
+    }
+
+    SUBCASE("a block that loads later gets its parts")
+    {
+        CHECK(multisAt(10, 4).empty());
+        wm.loadBlock(1, 0);
+        REQUIRE(multisAt(10, 4).size() == 1);
+        wm.loadBlock(1, 0);
+        CHECK(multisAt(10, 4).size() == 1);
+    }
+
+    SUBCASE("placing again replaces the old placement")
+    {
+        wm.setMulti(0x40000010, 5, 4, 5, 0, parts);
+        CHECK(multisAt(5, 5).empty());
+        CHECK(multisAt(6, 5).size() == 2);
+    }
+
+    SUBCASE("season changes keep exactly one copy of each part")
+    {
+        wm.setSeason(SeasonId::Winter);
+        CHECK(multisAt(5, 5).size() == 2);
+    }
+
+    SUBCASE("removal takes every part off and forgets the multi")
+    {
+        CHECK(wm.removeMulti(0x40000010));
+        CHECK(multisAt(5, 5).empty());
+        CHECK_FALSE(wm.removeMulti(0x40000010));
+        wm.loadBlock(1, 0);
+        CHECK(multisAt(10, 4).empty());
+    }
+
+    SUBCASE("parts are drawn as statics and picked without a serial")
+    {
+        ViewParams view;
+        view.maxTileX = 7;
+        view.maxTileY = 7;
+        std::vector<DrawItem> list;
+        wm.buildDrawList(view, list);
+        int drawn = 0;
+        for (const DrawItem& d : list)
+        {
+            if (d.object->kind == ObjectKind::Multi)
+            {
+                CHECK(d.type == DrawType::Static);
+                ++drawn;
+            }
+        }
+        CHECK(drawn == 2);
+    }
+}
+
+TEST_CASE("pick skips house placement previews")
+{
+    FakeTiles tiles;
+    FakeArt art;
+
+    WorldObject part;
+    part.kind = ObjectKind::Multi;
+    std::vector<DrawItem> list;
+    list.push_back({DrawType::Static, 0x200, 100, 100, 1, makeHueVector(0), &part});
+
+    CHECK(pick(list, tiles, art, 125, 120) != nullptr);
+    part.multiState = MULTI_PREVIEW;
+    CHECK(pick(list, tiles, art, 125, 120) == nullptr);
+}
