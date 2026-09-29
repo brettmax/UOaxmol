@@ -30,6 +30,8 @@ constexpr float kScrollStep = 200; // what one expander click adds (see setScrol
 constexpr uint16_t kPicNormal = 0x082D;
 constexpr uint16_t kPicMinimized = 0x0839;
 constexpr uint16_t kScrollGraphic = 0x1F40;
+// The pre-AOS scroll (top, two middles, bottom); gumpart.mul before AOS lacks 0x1F40.
+constexpr uint16_t kOldScrollGraphic = 0x0820;
 constexpr uint16_t kScrollTitle = 0x0834;
 constexpr uint16_t kLine = 0x082B;
 constexpr uint16_t kComment = 0x0836;
@@ -204,7 +206,7 @@ class SkillsExpandableScroll final : public Control
 {
 public:
     SkillsExpandableScroll(GumpContext& ctx, uint16_t graphic, uint16_t title, float height)
-        : _ctx(ctx), _graphic(graphic), _title(title)
+        : _ctx(ctx), _graphic(resolveGraphic(ctx, graphic)), _title(title)
     {
         init();
         autorelease();
@@ -212,7 +214,7 @@ public:
 
         for (int i = 0; i < 4; ++i)
         {
-            _w[i] = gumpSize(ctx, static_cast<uint16_t>(graphic + i)).width;
+            _w[i] = gumpSize(ctx, static_cast<uint16_t>(_graphic + i)).width;
             _width = std::max(_width, _w[i]);
         }
 
@@ -231,6 +233,30 @@ public:
     std::function<void()> onExpander;
 
 private:
+    static bool hasPieces(GumpContext& ctx, uint16_t graphic)
+    {
+        for (int i = 0; i < 4; ++i)
+        {
+            if (!ctx.textures->gump(static_cast<uint16_t>(graphic + i)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    static uint16_t resolveGraphic(GumpContext& ctx, uint16_t graphic)
+    {
+        if (graphic != kOldScrollGraphic && !hasPieces(ctx, graphic) && hasPieces(ctx, kOldScrollGraphic))
+        {
+            reportMissingGump(graphic, "skills scroll drawn with 0x0820");
+            return kOldScrollGraphic;
+        }
+
+        return graphic;
+    }
+
     void build()
     {
         // The expander stays (the manager may hold it as the hovered or clicked control, and

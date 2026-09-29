@@ -6,7 +6,7 @@
 
 #include "gumps/Gump.h"
 
-#include "axmol/ui/InputField.h"
+#include "axmol/TextBox.h"
 
 #include <functional>
 
@@ -103,6 +103,7 @@ protected:
     bool _isPressed = false;
     bool _isHovered = false;
     ax::Sprite* _sprite = nullptr;
+    ax::Node* _placeholder = nullptr;  // stands in for art the client files lack
 };
 
 // buttontileart: a button with a piece of item art centred in a cell of the given size;
@@ -139,6 +140,7 @@ private:
     bool _radio;
     int _group;
     ax::Sprite* _sprite = nullptr;
+    ax::Node* _placeholder = nullptr;  // stands in for art the client files lack
 };
 
 // Item art (tilepic / tilepichue), hued, with the tiledata partial-hue flag.
@@ -212,14 +214,16 @@ private:
 class TextEntry : public Control
 {
 public:
+    // `hue` is the parsed text hue (wire hue + 1), as the layout gives it.
     TextEntry(GumpContext& ctx, float width, float height, uint16_t hue, std::string_view text, int maxLength);
 
     std::string text() const;
     void focus();
-    void onClick(MouseButton button) override;
+    void onMouseDown(MouseButton button, const ax::Vec2& local) override;
 
 private:
-    ax::ui::InputField* _field = nullptr;
+    // UO-font text box (unicode font 1, black border) as ClassicUO's StbTextBox.
+    uo::client::text::TextBox* _box = nullptr;
 };
 
 // checkertrans: makes whatever it overlaps half transparent. Applied once when the layout is
@@ -229,6 +233,9 @@ class CheckerTrans : public Control
 public:
     CheckerTrans(float width, float height);
 };
+
+// Logs, once per id per run, a gump art id the client files lack and what was drawn instead.
+void reportMissingGump(uint16_t id, const char* use);
 
 // Hue for HTML text as ClassicUO's HtmlControl.InternalBuild picks it: an explicit wire colour
 // (RGB555) wins; otherwise near-black on backgrounds and white on bare gumps. RGBA8, R first.
