@@ -39,11 +39,11 @@ include(AXGameEngineSetup)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/uocore)
 
 # The common cross-platforms source files and header files
-file(GLOB_RECURSE GAME_HEADER
+file(GLOB_RECURSE GAME_HEADER CONFIGURE_DEPENDS
   Source/*.h Source/*.hpp
 )
 
-file(GLOB_RECURSE GAME_SOURCE
+file(GLOB_RECURSE GAME_SOURCE CONFIGURE_DEPENDS
   Source/*.cpp Source/*.c
 )
 
